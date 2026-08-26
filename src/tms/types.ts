@@ -73,3 +73,19 @@ export interface LoadPublic {
   rate: number;
   notes: string;
 }
+
+export interface BookLoadInput {
+  loadId: string;
+  mcNumber: string;
+  agreedRate: number;
+}
+
+export interface BookingInternal {
+  loadId: string;
+  mcNumber: string;
+  agreedRate: number;
+  bookingRef: string;
+  bookedAt: string;
+}
+
+export type BookingPublic = BookingInternal;

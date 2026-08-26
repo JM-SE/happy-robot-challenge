@@ -1,4 +1,4 @@
-# HappyRobot LTMS Adapter — Phase 1B
+# HappyRobot LTMS Adapter — Phase 1C
 
 This repository contains the first, minimal vertical slice of the carrier-sales TMS adapter:
 
@@ -6,7 +6,7 @@ This repository contains the first, minimal vertical slice of the carrier-sales 
 HTTP Route Handler → node:net → local LTMS mock
 ```
 
-Phase 1B keeps the `DEBUG_ECHO` vertical slice and adds read-only `LOAD_QUERY` and `LOAD_GET`. Booking, comprehensive fault injection, HappyRobot, FMCSA, the real TMS, persistence and deployment remain out of scope.
+Phase 1C keeps the `DEBUG_ECHO` and read-only load slices and adds stateful `LOAD_BOOK`. Comprehensive fault injection, HappyRobot, FMCSA, the real TMS, persistence and deployment remain out of scope.
 
 ## Requirements
 
@@ -70,6 +70,20 @@ curl -X POST http://localhost:3000/api/tms/loads/detail `
 
 Both endpoints return `{ "ok": true, "data": ... }` on success. The internal `MAX_BUY` field is intentionally removed before the HTTP response. ASCII padding around wire fields is trimmed; state codes and equipment types are normalized to uppercase while internal city spacing is preserved.
 
+## Stateful booking
+
+Book a load with the exact public fields `loadId`, `mcNumber` and `agreedRate`:
+
+```bash
+curl -X POST http://localhost:3000/api/tms/loads/book `
+  -H "content-type: application/json" `
+  -d '{"loadId":"LOAD-1001","mcNumber":"12345","agreedRate":2200}'
+```
+
+The mock transitions each load from `AVAILABLE` to `BOOKED`, returns a booking reference and an ISO-8601 UTC timestamp, and rejects a second booking with `409 ALREADY_BOOKED`. The mock also applies the internal `MAX_BUY` policy to reject an excessive agreed rate with `422 INVALID_RATE`; the threshold is never returned publicly.
+
+Booking has no automatic retry. If a timeout occurs after the request was sent, the result is considered uncertain and the caller must not submit a second booking automatically.
+
 ## Tests
 
 ```bash
@@ -78,7 +92,7 @@ npm run typecheck
 npm run build
 ```
 
-The tests cover the request builder, incremental `Buffer` parser, multiple records, `END`/`ERR`, byte limits, timeouts, socket cleanup, new connections per request, echo/load route validation, public/internal load mapping and real local TCP integration.
+The tests cover the request builder, incremental `Buffer` parser, multiple records, `END`/`ERR`, byte limits, timeouts, socket cleanup, new connections per request, echo/load/booking route validation, public/internal load mapping, state transitions and real local TCP integration.
 
 ## Technical decisions
 
@@ -90,4 +104,4 @@ The tests cover the request builder, incremental `Buffer` parser, multiple recor
 
 ## Current limitations
 
-This is only Phase 1B. The mock supports `DEBUG_ECHO`, read-only `LOAD_QUERY` and `LOAD_GET`, plus basic authentication/command/field/load errors. Booking, comprehensive fault scenarios and the real TMS remain out of scope.
+This is only Phase 1C. The mock supports `DEBUG_ECHO`, read-only `LOAD_QUERY`/`LOAD_GET`, stateful `LOAD_BOOK` and basic authentication/command/field/load/booking errors. Comprehensive fault scenarios, negotiation, and the real TMS remain out of scope.

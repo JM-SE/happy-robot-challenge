@@ -1,11 +1,12 @@
 import net from "node:net";
-import { LOAD_DATASET } from "./dataset";
+import { BookingStateError, bookLoadInState, createLoadBookingState, LOAD_DATASET } from "./dataset";
 import type { LoadInternal } from "../src/tms/types";
 
 export interface MockLtmsOptions {
   host?: string;
   port?: number;
   authToken?: string;
+  bookingServerError?: boolean;
 }
 
 export interface MockLtmsServer {
@@ -41,6 +42,13 @@ function loadFrame(load: LoadInternal, reverseOrder: boolean): Buffer {
 
 function loadErrorFrame(code: string, message: string): Buffer {
   return errorFrame(code, message);
+}
+
+function bookingFrame(booking: { loadId: string; mcNumber: string; agreedRate: number; bookingRef: string; bookedAt: string }): Buffer {
+  return Buffer.from(
+    `LOAD_ID:${booking.loadId}|MC_NUM:${booking.mcNumber}|AGREED_RATE:${booking.agreedRate}|BOOKING_REF:${booking.bookingRef}|BOOKED_AT:${booking.bookedAt}\r\nEND\r\n`,
+    "utf8",
+  );
 }
 
 function loadQueryResponse(fields: Map<string, string>): Buffer {
@@ -80,6 +88,7 @@ export function createMockLtmsServer(options: MockLtmsOptions = {}): MockLtmsSer
   const host = options.host ?? "127.0.0.1";
   const port = options.port ?? 9000;
   const authToken = options.authToken ?? "local-test-token";
+  const bookingState = createLoadBookingState();
   let connectionCount = 0;
   let requestCount = 0;
   let server: net.Server | undefined;
@@ -111,6 +120,26 @@ export function createMockLtmsServer(options: MockLtmsOptions = {}): MockLtmsSer
       } else if (fields.get("CMD") === "LOAD_GET") {
         const load = LOAD_DATASET.find((candidate) => candidate.loadId === fields.get("LOAD_ID"));
         response = load ? Buffer.concat([loadFrame(load, false), Buffer.from("END\r\n")]) : loadErrorFrame("UNKNOWN_LOAD", "Load was not found");
+      } else if (fields.get("CMD") === "LOAD_BOOK") {
+        if (options.bookingServerError) response = loadErrorFrame("SERVER_ERROR", "Booking service unavailable");
+        else if (!fields.has("LOAD_ID") || !fields.has("MC_NUM") || !fields.has("AGREED_RATE")) response = loadErrorFrame("MISSING_FIELD", "Booking fields are required");
+        else {
+          const agreedRate = Number(fields.get("AGREED_RATE"));
+          if (!Number.isFinite(agreedRate) || agreedRate <= 0) response = loadErrorFrame("INVALID_RATE", "Agreed rate is invalid");
+          else {
+            try {
+              response = bookingFrame(bookLoadInState(bookingState, {
+                loadId: fields.get("LOAD_ID") ?? "",
+                mcNumber: fields.get("MC_NUM") ?? "",
+                agreedRate,
+              }));
+            } catch (error) {
+              response = error instanceof BookingStateError
+                ? loadErrorFrame(error.code, error.message)
+                : loadErrorFrame("SERVER_ERROR", "Booking service unavailable");
+            }
+          }
+        }
       } else response = errorFrame("UNKNOWN_CMD", "Unknown command");
       socket.end(response);
     });

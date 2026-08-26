@@ -24,6 +24,9 @@ function getHttpStatus(error: TmsAdapterError): number {
       AUTH_FAILED: 401,
       UNKNOWN_LOAD: 404,
       MISSING_FIELD: 400,
+      ALREADY_BOOKED: 409,
+      INVALID_RATE: 422,
+      SERVER_ERROR: 502,
     };
     return remoteStatus[error.code] ?? HTTP_STATUS_BY_ERROR_TYPE[error.type] ?? 500;
   }
