@@ -87,9 +87,13 @@ export class TmsClient {
           settleError(error);
           return;
         }
-        socket?.write(frame, (error) => {
-          if (error) settleError(new TmsConnectionError("The TMS request could not be written.", "write"));
-        });
+        try {
+          socket?.write(frame, (error) => {
+            if (error) settleError(new TmsConnectionError("The TMS request could not be written.", "write"));
+          });
+        } catch {
+          settleError(new TmsConnectionError("The TMS request could not be written.", "write"));
+        }
       };
 
       const onData = (chunk: unknown) => {
@@ -110,6 +114,7 @@ export class TmsClient {
         if (!settled) settleError(new TmsResponseIncompleteError(), false);
       };
 
+      connectTimer = setTimeout(() => settleError(new TmsTimeoutError("CONNECT_TIMEOUT")), this.config.connectTimeoutMs);
       try {
         socket = this.connect({ host: this.config.host, port: this.config.port });
         socket.once("connect", onConnect);
@@ -117,7 +122,6 @@ export class TmsClient {
         socket.once("error", onError);
         socket.once("end", onEnd);
         socket.once("close", onClose);
-        connectTimer = setTimeout(() => settleError(new TmsTimeoutError("CONNECT_TIMEOUT")), this.config.connectTimeoutMs);
       } catch (error) {
         settleError(error);
       }

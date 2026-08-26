@@ -125,6 +125,7 @@ export function recordToLoadInternal(record: TmsRecord): LoadInternal {
 }
 
 export function toPublicLoad(load: LoadInternal): LoadPublic {
-  const { maxBuy: _internalOnly, ...publicLoad } = load;
+  const { maxBuy, ...publicLoad } = load;
+  void maxBuy;
   return publicLoad;
 }

@@ -1,7 +1,6 @@
 import { TmsConfigurationError } from "./errors";
+import { DEFAULT_TMS_FRAME_BYTES } from "./limits";
 import type { TmsConfig } from "./types";
-
-const DEFAULT_MAX_FRAME_BYTES = 4096;
 
 function required(env: NodeJS.ProcessEnv, name: string): string {
   const value = env[name];
@@ -18,7 +17,7 @@ function positiveInteger(value: string, name: string): number {
 export function getTmsConfig(env: NodeJS.ProcessEnv = process.env): TmsConfig {
   const maxFrame = env.TMS_MAX_FRAME_BYTES?.trim()
     ? positiveInteger(env.TMS_MAX_FRAME_BYTES, "TMS_MAX_FRAME_BYTES")
-    : DEFAULT_MAX_FRAME_BYTES;
+    : DEFAULT_TMS_FRAME_BYTES;
 
   return {
     host: required(env, "TMS_HOST"),

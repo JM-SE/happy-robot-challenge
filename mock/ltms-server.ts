@@ -1,17 +1,26 @@
 import net from "node:net";
-import { BookingStateError, bookLoadInState, createLoadBookingState, LOAD_DATASET } from "./dataset";
+import { BookingStateError, bookLoadInState, createLoadBookingState, LOAD_DATASET, type LoadBookingState } from "./dataset";
+import { applyPreDispatchFault, resolveMockFault, writePostDispatchResponse, type MockFaultScenario, type MockTimer } from "./scenarios";
+import { DEFAULT_TMS_FRAME_BYTES } from "../src/tms/limits";
 import type { LoadInternal } from "../src/tms/types";
+
+const IDENTIFIER = /^[A-Z][A-Z0-9_]*$/;
 
 export interface MockLtmsOptions {
   host?: string;
   port?: number;
   authToken?: string;
   bookingServerError?: boolean;
+  fault?: MockFaultScenario;
+  faultScenario?: MockFaultScenario;
+  faultDelayMs?: number;
+  fragmentSize?: number;
 }
 
 export interface MockLtmsServer {
   readonly connectionCount: number;
   readonly requestCount: number;
+  readonly dispatchCount: number;
   start(): Promise<{ host: string; port: number }>;
   stop(): Promise<void>;
 }
@@ -71,17 +80,65 @@ function loadQueryResponse(fields: Map<string, string>): Buffer {
   return Buffer.concat([...selected.map((load, index) => loadFrame(load, index % 2 === 1)), Buffer.from("END\r\n")]);
 }
 
+function dispatchCommand(fields: Map<string, string>, bookingState: LoadBookingState[], bookingServerError: boolean): Buffer {
+  const command = fields.get("CMD");
+  if (command === "DEBUG_ECHO" && !fields.has("MSG")) return errorFrame("MISSING_FIELD", "MSG is required");
+  if (command === "DEBUG_ECHO") return responseFrame(fields.get("MSG") ?? "", fields.size);
+  if (command === "LOAD_QUERY") {
+    const hasFilter = ["ORIG_STATE", "DEST_STATE", "ORIG_CITY", "DEST_CITY", "EQTYPE"].some((field) => fields.has(field));
+    return hasFilter ? loadQueryResponse(fields) : loadErrorFrame("MISSING_FIELD", "A load filter is required");
+  }
+  if (command === "LOAD_GET") {
+    const load = LOAD_DATASET.find((candidate) => candidate.loadId === fields.get("LOAD_ID"));
+    return load ? Buffer.concat([loadFrame(load, false), Buffer.from("END\r\n")]) : loadErrorFrame("UNKNOWN_LOAD", "Load was not found");
+  }
+  if (command === "LOAD_BOOK") {
+    if (bookingServerError) return loadErrorFrame("SERVER_ERROR", "Booking service unavailable");
+    if (!fields.has("LOAD_ID") || !fields.has("MC_NUM") || !fields.has("AGREED_RATE")) {
+      return loadErrorFrame("MISSING_FIELD", "Booking fields are required");
+    }
+
+    const agreedRate = Number(fields.get("AGREED_RATE"));
+    if (!Number.isFinite(agreedRate) || agreedRate <= 0) return loadErrorFrame("INVALID_RATE", "Agreed rate is invalid");
+    try {
+      return bookingFrame(bookLoadInState(bookingState, {
+        loadId: fields.get("LOAD_ID") ?? "",
+        mcNumber: fields.get("MC_NUM") ?? "",
+        agreedRate,
+      }));
+    } catch (error) {
+      return error instanceof BookingStateError
+        ? loadErrorFrame(error.code, error.message)
+        : loadErrorFrame("SERVER_ERROR", "Booking service unavailable");
+    }
+  }
+  return errorFrame("UNKNOWN_CMD", "Unknown command");
+}
+
 function parseRequest(line: string): Map<string, string> | Error {
   const fields = new Map<string, string>();
+  if (!line || line.includes("\r") || line.includes("\n")) return new Error("malformed");
   for (const segment of line.split("|")) {
     const separator = segment.indexOf(":");
     if (separator <= 0) return new Error("malformed");
     const name = segment.slice(0, separator);
     const value = segment.slice(separator + 1);
-    if (fields.has(name) || !value || value.includes("\r") || value.includes("\n")) return new Error("malformed");
+    if (!IDENTIFIER.test(name) || fields.has(name) || !value || value.includes("\r") || value.includes("\n")) return new Error("malformed");
     fields.set(name, value);
   }
+  if (fields.get("CMD") === undefined || fields.get("AUTH") === undefined) return new Error("malformed");
+  const entries = [...fields.keys()];
+  if (entries[0] !== "CMD" || entries[1] !== "AUTH") return new Error("malformed");
+  if (entries.slice(2).some((name) => name === "CMD" || name === "AUTH")) return new Error("malformed");
   return fields;
+}
+
+function decodeRequest(bytes: Buffer): string | Error {
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return new Error("malformed");
+  }
 }
 
 export function createMockLtmsServer(options: MockLtmsOptions = {}): MockLtmsServer {
@@ -91,8 +148,19 @@ export function createMockLtmsServer(options: MockLtmsOptions = {}): MockLtmsSer
   const bookingState = createLoadBookingState();
   let connectionCount = 0;
   let requestCount = 0;
+  let dispatchCount = 0;
   let server: net.Server | undefined;
   const sockets = new Set<net.Socket>();
+  const timers = new Set<MockTimer>();
+  const fault = resolveMockFault(options);
+
+  const schedule = (callback: () => void, delayMs: number): void => {
+    const timer = setTimeout(() => {
+      timers.delete(timer);
+      callback();
+    }, delayMs);
+    timers.add(timer);
+  };
 
   const handle = (socket: net.Socket) => {
     connectionCount += 1;
@@ -102,46 +170,46 @@ export function createMockLtmsServer(options: MockLtmsOptions = {}): MockLtmsSer
     socket.on("data", (chunk) => {
       if (handled) return;
       buffer = Buffer.concat([buffer, Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)]);
-      const end = buffer.indexOf(Buffer.from("\r\n"));
-      if (end < 0) return;
+      if (buffer.byteLength > DEFAULT_TMS_FRAME_BYTES) {
+        handled = true;
+        socket.end(errorFrame("MALFORMED", "Request exceeds the configured frame limit"));
+        return;
+      }
+      const cr = buffer.indexOf(13);
+      const lf = buffer.indexOf(10);
+      const firstControl = cr === -1 ? lf : lf === -1 ? cr : Math.min(cr, lf);
+      if (firstControl === -1) return;
+      if (buffer[firstControl] === 10 || firstControl + 1 >= buffer.length) {
+        if (buffer[firstControl] === 10) {
+          handled = true;
+          socket.end(errorFrame("MALFORMED", "Malformed request"));
+        }
+        return;
+      }
+      if (buffer[firstControl + 1] !== 10) {
+        handled = true;
+        socket.end(errorFrame("MALFORMED", "Malformed request"));
+        return;
+      }
+      const end = firstControl;
       handled = true;
       requestCount += 1;
-      const line = buffer.subarray(0, end).toString("utf8");
+      const line = decodeRequest(buffer.subarray(0, end));
       const trailing = buffer.subarray(end + 2);
-      let response: Buffer;
-      const fields = parseRequest(line);
-      if (trailing.length || fields instanceof Error) response = errorFrame("MALFORMED", "Malformed request");
-      else if (fields.get("AUTH") !== authToken) response = errorFrame("AUTH_FAILED", "Authentication failed");
-      else if (fields.get("CMD") === "DEBUG_ECHO" && !fields.has("MSG")) response = errorFrame("MISSING_FIELD", "MSG is required");
-      else if (fields.get("CMD") === "DEBUG_ECHO") response = responseFrame(fields.get("MSG") ?? "", fields.size);
-      else if (fields.get("CMD") === "LOAD_QUERY") {
-        const hasFilter = ["ORIG_STATE", "DEST_STATE", "ORIG_CITY", "DEST_CITY", "EQTYPE"].some((field) => fields.has(field));
-        response = hasFilter ? loadQueryResponse(fields) : loadErrorFrame("MISSING_FIELD", "A load filter is required");
-      } else if (fields.get("CMD") === "LOAD_GET") {
-        const load = LOAD_DATASET.find((candidate) => candidate.loadId === fields.get("LOAD_ID"));
-        response = load ? Buffer.concat([loadFrame(load, false), Buffer.from("END\r\n")]) : loadErrorFrame("UNKNOWN_LOAD", "Load was not found");
-      } else if (fields.get("CMD") === "LOAD_BOOK") {
-        if (options.bookingServerError) response = loadErrorFrame("SERVER_ERROR", "Booking service unavailable");
-        else if (!fields.has("LOAD_ID") || !fields.has("MC_NUM") || !fields.has("AGREED_RATE")) response = loadErrorFrame("MISSING_FIELD", "Booking fields are required");
-        else {
-          const agreedRate = Number(fields.get("AGREED_RATE"));
-          if (!Number.isFinite(agreedRate) || agreedRate <= 0) response = loadErrorFrame("INVALID_RATE", "Agreed rate is invalid");
-          else {
-            try {
-              response = bookingFrame(bookLoadInState(bookingState, {
-                loadId: fields.get("LOAD_ID") ?? "",
-                mcNumber: fields.get("MC_NUM") ?? "",
-                agreedRate,
-              }));
-            } catch (error) {
-              response = error instanceof BookingStateError
-                ? loadErrorFrame(error.code, error.message)
-                : loadErrorFrame("SERVER_ERROR", "Booking service unavailable");
-            }
-          }
-        }
-      } else response = errorFrame("UNKNOWN_CMD", "Unknown command");
-      socket.end(response);
+      const fields = line instanceof Error ? line : parseRequest(line);
+      if (trailing.length || fields instanceof Error) {
+        socket.end(errorFrame("MALFORMED", "Malformed request"));
+        return;
+      }
+      if (fields.get("AUTH") !== authToken) {
+        socket.end(errorFrame("AUTH_FAILED", "Authentication failed"));
+        return;
+      }
+      if (applyPreDispatchFault(socket, fault)) return;
+
+      dispatchCount += 1;
+      const response = dispatchCommand(fields, bookingState, options.bookingServerError ?? false);
+      if (!writePostDispatchResponse(socket, response, fault, schedule)) socket.end(response);
     });
     socket.on("close", () => sockets.delete(socket));
   };
@@ -149,6 +217,7 @@ export function createMockLtmsServer(options: MockLtmsOptions = {}): MockLtmsSer
   return {
     get connectionCount() { return connectionCount; },
     get requestCount() { return requestCount; },
+    get dispatchCount() { return dispatchCount; },
     start: () => new Promise((resolve, reject) => {
       server = net.createServer(handle);
       server.once("error", reject);
@@ -159,6 +228,8 @@ export function createMockLtmsServer(options: MockLtmsOptions = {}): MockLtmsSer
       });
     }),
     stop: () => new Promise((resolve, reject) => {
+      for (const timer of timers) clearTimeout(timer);
+      timers.clear();
       for (const socket of sockets) socket.destroy();
       if (!server) return resolve();
       server.close((error) => error ? reject(error) : resolve());

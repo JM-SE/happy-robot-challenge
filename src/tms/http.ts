@@ -15,7 +15,11 @@ const HTTP_STATUS_BY_ERROR_TYPE: Record<string, number> = {
 };
 
 const FIXED_PUBLIC_MESSAGES: Record<string, string> = {
+  TMS_CONFIGURATION: "The TMS configuration is unavailable.",
   TMS_TIMEOUT: "The TMS did not respond within the configured timeout.",
+  TMS_PROTOCOL: "The TMS response was invalid.",
+  TMS_RESPONSE_INCOMPLETE: "The TMS connection closed before a complete response was received.",
+  TMS_CONNECTION: "The TMS connection failed.",
 };
 
 function getHttpStatus(error: TmsAdapterError): number {

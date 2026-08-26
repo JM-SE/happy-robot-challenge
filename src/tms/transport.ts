@@ -9,6 +9,12 @@ export interface TmsSocket {
   destroy(): this;
 }
 
-export type TmsConnect = (options: { host: string; port: number }) => TmsSocket;
+export interface TmsConnectOptions {
+  host: string;
+  port: number;
+}
+
+/** Injectable transport seam; a future TLS connector can implement this contract. */
+export type TmsConnect = (options: TmsConnectOptions) => TmsSocket;
 
 export const connectTcp: TmsConnect = ({ host, port }) => net.createConnection({ host, port });
