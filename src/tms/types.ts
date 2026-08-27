@@ -1,5 +1,12 @@
 export type TmsFields = Record<string, string>;
 
+export const TMS_MODES = {
+  MOCK: "mock",
+  REAL: "real",
+} as const;
+
+export type TmsMode = (typeof TMS_MODES)[keyof typeof TMS_MODES];
+
 export interface TmsRequest {
   command: string;
   authToken: string;
@@ -14,6 +21,8 @@ export interface TmsCommandRequest {
 
 export interface TmsRecord {
   fields: TmsFields;
+  /** Optional bare response marker, such as the real TMS `ECHO` marker. */
+  recordType?: string;
   /** Retained only for bounded internal diagnostics; never returned by HTTP. */
   rawLine: string;
 }
@@ -24,6 +33,7 @@ export interface TmsParsedResponse {
 }
 
 export interface TmsConfig {
+  mode: TmsMode;
   host: string;
   port: number;
   authToken: string;
@@ -34,7 +44,7 @@ export interface TmsConfig {
 
 export interface EchoResult {
   message: string;
-  fieldCount: number | null;
+  fieldCount: number;
 }
 
 export interface LoadQueryInput {

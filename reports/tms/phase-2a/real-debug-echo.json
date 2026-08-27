@@ -1,0 +1,28 @@
+{
+  "handbook": "HR-LTMS-PR-001",
+  "environment": "candidate-non-production",
+  "runner": "test:real-tms:echo",
+  "generatedAt": "2026-08-27T14:52:39.536Z",
+  "probes": [
+    {
+      "probe": "base",
+      "outcome": "success",
+      "durationMs": 421,
+      "requestBytes": 55,
+      "responseBytes": 45,
+      "recordCount": 1,
+      "recordTypes": [
+        "ECHO"
+      ],
+      "fieldNames": [
+        [
+          "AUTH",
+          "FIELDS_PARSED",
+          "MSG"
+        ]
+      ],
+      "terminalEnd": true,
+      "lifecycle": "peer-close"
+    }
+  ]
+}

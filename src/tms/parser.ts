@@ -34,7 +34,7 @@ function safeRawLine(line: string): string {
   return bounded;
 }
 
-function parseFields(line: string): TmsFields {
+function parseFields(line: string, allowResponseAuth = false): TmsFields {
   const fields: TmsFields = {};
   for (const segment of line.split("|")) {
     const separator = segment.indexOf(":");
@@ -45,11 +45,23 @@ function parseFields(line: string): TmsFields {
     // NOTES is a valid optional payload in the load record contract; all other
     // response fields must carry a value.
     if (!value && name !== "NOTES") throw new TmsProtocolError("Response contains an empty field value.");
-    if (name === "CMD" || name === "AUTH") throw new TmsProtocolError("Response contains a reserved field.");
+    if (name === "CMD" || (name === "AUTH" && !allowResponseAuth)) throw new TmsProtocolError("Response contains a reserved field.");
     if (name in fields) throw new TmsProtocolError("Response contains a duplicate field.");
     fields[name] = value;
   }
   return fields;
+}
+
+function parseRecord(line: string): TmsRecord {
+  const segments = line.split("|");
+  const hasBareMarker = !segments[0]?.includes(":");
+  if (hasBareMarker && segments[0] !== "ECHO") throw new TmsProtocolError("Response contains an unknown record marker.");
+
+  const recordType = hasBareMarker ? segments.shift() : undefined;
+  const fields = parseFields(segments.join("|"), recordType === "ECHO");
+  return recordType
+    ? { fields, recordType, rawLine: safeRawLine(line) }
+    : { fields, rawLine: safeRawLine(line) };
 }
 
 export class LtmsResponseParser {
@@ -90,7 +102,7 @@ export class LtmsResponseParser {
       }
 
       if (!line) throw new TmsProtocolError("Empty response record.");
-      this.records.push({ fields: parseFields(line), rawLine: safeRawLine(line) });
+      this.records.push(parseRecord(line));
     }
   }
 

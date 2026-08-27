@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint .",
     "test": "vitest run",
+    "test:real-tms:echo": "vitest run --config vitest.real.config.ts",
     "test:watch": "vitest",
     "mock:tms": "tsx mock/cli.ts",
     "typecheck": "tsc --noEmit"
@@ -15,7 +16,8 @@
   "dependencies": {
     "next": "^16.2.9",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "server-only": "^0.0.1"
   },
   "devDependencies": {
     "@types/node": "^22.15.3",

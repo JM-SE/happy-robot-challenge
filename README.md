@@ -1,4 +1,4 @@
-# HappyRobot LTMS Adapter — Phase 1D
+# HappyRobot LTMS Adapter — Phase 2A
 
 This repository contains the first, minimal vertical slice of the carrier-sales TMS adapter:
 
@@ -6,7 +6,7 @@ This repository contains the first, minimal vertical slice of the carrier-sales 
 HTTP Route Handler → node:net → local LTMS mock
 ```
 
-Phase 1D keeps the `DEBUG_ECHO`, read-only loads and stateful `LOAD_BOOK` slices, and hardens framing, errors, lifecycle cleanup and local fault injection. HappyRobot, FMCSA, the real TMS, persistence and deployment remain out of scope.
+Phase 1A–1D remains the local baseline. Phase 2A adds an explicitly opt-in validation track for the authorized candidate TMS using `DEBUG_ECHO` only. HappyRobot, FMCSA, operational real-TMS commands, persistence and deployment remain out of scope.
 
 ## Requirements
 
@@ -20,7 +20,7 @@ npm install
 Copy-Item .env.example .env.local
 ```
 
-The TMS settings are server-only: `TMS_HOST`, `TMS_PORT` (1–65535), `TMS_AUTH_TOKEN`, `TMS_CONNECT_TIMEOUT_MS`, `TMS_RESPONSE_TIMEOUT_MS` and optional `TMS_MAX_FRAME_BYTES` (default `4096`). Never use `NEXT_PUBLIC_` for them. The `TMS_MOCK_*` variables affect only the local mock CLI.
+The TMS settings are server-only: `TMS_HOST`, `TMS_PORT` (1–65535), `TMS_AUTH_TOKEN`, `TMS_CONNECT_TIMEOUT_MS`, `TMS_RESPONSE_TIMEOUT_MS` and optional `TMS_MAX_FRAME_BYTES` (default `4096`). Never use `NEXT_PUBLIC_` for them. The `TMS_MOCK_*` variables affect only the local mock CLI. Real mode additionally requires the exact activation triple documented below.
 
 ## Run locally
 
@@ -94,6 +94,52 @@ npm run build
 
 The tests cover the request builder, incremental `Buffer` parser, arbitrary chunk boundaries, strict CRLF framing, multiple records, `END`/`ERR`, byte limits, timeouts, socket cleanup, lifecycle races, new connections per request, echo/load/booking route validation, public/internal load mapping, state transitions, configurable fault scenarios and real local TCP integration.
 
+## Authorized real-TMS validation (Phase 2A)
+
+The real track is disabled by default. It may run only against the authorized candidate non-production instance and only for `DEBUG_ECHO`. `npm test` never opens a real-TMS connection.
+
+Set the following variables in the process environment using the authorized secret channel. Do not put real values in `.env.example`, source code, reports or shared terminal output:
+
+```text
+TMS_MODE=real
+TMS_ENV=non-production
+TMS_REAL_ENABLED=true
+TMS_HOST=<authorized host>
+TMS_PORT=<authorized port>
+TMS_AUTH_TOKEN=<authorized token>
+TMS_CONNECT_TIMEOUT_MS=<bounded timeout>
+TMS_RESPONSE_TIMEOUT_MS=<bounded timeout>
+```
+
+PowerShell:
+
+```powershell
+$env:TMS_MODE = 'real'
+$env:TMS_ENV = 'non-production'
+$env:TMS_REAL_ENABLED = 'true'
+# Inject TMS_HOST, TMS_PORT and TMS_AUTH_TOKEN through the authorized environment.
+npm run test:real-tms:echo
+```
+
+Git Bash:
+
+```bash
+export TMS_MODE=real
+export TMS_ENV=non-production
+export TMS_REAL_ENABLED=true
+# Inject TMS_HOST, TMS_PORT and TMS_AUTH_TOKEN through the authorized environment.
+npm run test:real-tms:echo
+```
+
+The runner fails closed if the exact activation flags or required configuration are missing. It sends one ASCII `DEBUG_ECHO` request per connection, never retries, never runs `LOAD_QUERY`, `LOAD_GET` or `LOAD_BOOK`, and writes only sanitized metadata to `reports/tms/phase-2a/real-debug-echo.json` after a successful probe. Optional probes are disabled by default:
+
+```powershell
+$env:TMS_REAL_ECHO_EXTRAS = 'true'        # also probes X/Y/Z and expects FIELDS_PARSED=6
+$env:TMS_REAL_ECHO_AUTH_INVALID = 'true' # only when explicitly authorized
+```
+
+The real TMS handbook is `HR-LTMS-PR-001`. Its successful response uses the marker `ECHO` and fields `AUTH:OK`, `FIELDS_PARSED` and `MSG`; the public API continues returning only `{ message, fieldCount }`. A successful `DEBUG_ECHO` validates transport, authentication and parsing only. It does not validate operational commands or real fault injection.
+
 ## Technical decisions
 
 - Route handlers explicitly use the Node.js runtime because TCP uses `node:net`.
@@ -133,4 +179,4 @@ Stop the mock with `Ctrl+C` and restart it to reset its isolated booking state.
 
 ## Current limitations
 
-This is only the local Phase 1D adapter. The mock supports `DEBUG_ECHO`, read-only `LOAD_QUERY`/`LOAD_GET`, stateful `LOAD_BOOK`, remote error codes and deterministic fault scenarios. TLS, negotiation, the real TMS, FMCSA, HappyRobot, persistence and deployment remain out of scope.
+The local mock supports `DEBUG_ECHO`, read-only `LOAD_QUERY`/`LOAD_GET`, stateful `LOAD_BOOK`, remote error codes and deterministic fault scenarios. Phase 2A only adds an opt-in real `DEBUG_ECHO` runner. TLS, negotiation, real operational commands, FMCSA, HappyRobot, persistence and deployment remain out of scope.

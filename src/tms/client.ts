@@ -8,6 +8,7 @@ import {
 } from "./errors";
 import { logTmsEvent } from "./logger";
 import { LtmsResponseParser } from "./parser";
+import { assertTmsCommandAllowed } from "./policy";
 import { connectTcp, type TmsConnect, type TmsSocket } from "./transport";
 import type { TmsCommandRequest, TmsConfig, TmsParsedResponse } from "./types";
 
@@ -17,6 +18,12 @@ export class TmsClient {
   constructor(private readonly config: TmsConfig, private readonly connect: TmsConnect = connectTcp) {}
 
   execute(request: TmsClientRequest): Promise<TmsParsedResponse> {
+    try {
+      assertTmsCommandAllowed(this.config, request.command);
+    } catch (error) {
+      return Promise.reject(error);
+    }
+
     const requestId = request.requestId ?? randomUUID();
     const startedAt = Date.now();
     let socket: TmsSocket | undefined;

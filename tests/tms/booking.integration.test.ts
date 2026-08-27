@@ -15,7 +15,7 @@ describe("stateful booking TCP integration", () => {
   it("permits one booking and rejects a duplicate", async () => {
     server = createMockLtmsServer({ port: 0, authToken: "token" });
     const address = await server.start();
-    const config: TmsConfig = { host: address.host, port: address.port, authToken: "token", connectTimeoutMs: 1000, responseTimeoutMs: 1000, maxFrameBytes: 4096 };
+    const config: TmsConfig = { mode: "mock", host: address.host, port: address.port, authToken: "token", connectTimeoutMs: 1000, responseTimeoutMs: 1000, maxFrameBytes: 4096 };
     const client = new TmsClient(config);
     await expect(client.execute({ command: "LOAD_BOOK", fields: { LOAD_ID: "LOAD-1001", MC_NUM: "12345", AGREED_RATE: 2200 } })).resolves.toBeDefined();
     await expect(client.execute({ command: "LOAD_BOOK", fields: { LOAD_ID: "LOAD-1001", MC_NUM: "12345", AGREED_RATE: 2200 } })).rejects.toMatchObject({ code: "ALREADY_BOOKED" });
@@ -26,14 +26,14 @@ describe("stateful booking TCP integration", () => {
     const first = createMockLtmsServer({ port: 0, authToken: "token", bookingServerError: true });
     server = first;
     const firstAddress = await first.start();
-    const config: TmsConfig = { host: firstAddress.host, port: firstAddress.port, authToken: "token", connectTimeoutMs: 1000, responseTimeoutMs: 1000, maxFrameBytes: 4096 };
+    const config: TmsConfig = { mode: "mock", host: firstAddress.host, port: firstAddress.port, authToken: "token", connectTimeoutMs: 1000, responseTimeoutMs: 1000, maxFrameBytes: 4096 };
     await expect(new TmsClient(config).execute({ command: "LOAD_BOOK", fields: { LOAD_ID: "LOAD-1001", MC_NUM: "12345", AGREED_RATE: 2200 } })).rejects.toBeInstanceOf(TmsRemoteError);
   });
 
   it("allows at most one successful concurrent booking for the same load", async () => {
     server = createMockLtmsServer({ port: 0, authToken: "token" });
     const address = await server.start();
-    const config: TmsConfig = { host: address.host, port: address.port, authToken: "token", connectTimeoutMs: 1000, responseTimeoutMs: 1000, maxFrameBytes: 4096 };
+    const config: TmsConfig = { mode: "mock", host: address.host, port: address.port, authToken: "token", connectTimeoutMs: 1000, responseTimeoutMs: 1000, maxFrameBytes: 4096 };
     const request = { command: "LOAD_BOOK" as const, fields: { LOAD_ID: "LOAD-1001", MC_NUM: "12345", AGREED_RATE: 2200 } };
 
     const results = await Promise.allSettled([

@@ -114,6 +114,16 @@ describe("LtmsResponseParser", () => {
     expect(() => parseResponse("ERR|CODE:SERVER_ERROR\r\n")).toThrow(TmsProtocolError);
   });
 
+  it("parses the official real DEBUG_ECHO marker and response AUTH field", () => {
+    const response = parseResponse("ECHO|AUTH:OK|FIELDS_PARSED:3|MSG:HELLO\r\nEND\r\n");
+
+    expect(response.records).toEqual([{
+      recordType: "ECHO",
+      fields: { AUTH: "OK", FIELDS_PARSED: "3", MSG: "HELLO" },
+      rawLine: "ECHO|AUTH:[REDACTED]|FIELDS_PARSED:3|MSG:HELLO",
+    }]);
+  });
+
   it("rejects unknown terminals and anything after END", () => {
     expect(() => parseResponse("DONE\r\n")).toThrow(TmsProtocolError);
     expect(() => parseResponse("A:value\r\nEND\r\nDONE\r\n")).toThrow(TmsProtocolError);

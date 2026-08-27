@@ -70,6 +70,7 @@ export function socketConnect(socket: TestSocket): TmsConnect {
 
 export function testConfig(overrides: Partial<TmsConfig> = {}): TmsConfig {
   return {
+    mode: "mock",
     host: "127.0.0.1",
     port: 9000,
     authToken: "test-token",

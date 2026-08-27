@@ -15,6 +15,7 @@ const requiredEnv = (): NodeJS.ProcessEnv => ({
 describe("getTmsConfig", () => {
   it("uses the default response frame limit when it is omitted", () => {
     expect(getTmsConfig(requiredEnv())).toEqual({
+      mode: "mock",
       host: "127.0.0.1",
       port: 9000,
       authToken: "test-token",
@@ -42,6 +43,34 @@ describe("getTmsConfig", () => {
     const invalid = requiredEnv();
     invalid.TMS_PORT = "65536";
     expect(() => getTmsConfig(invalid)).toThrow(TmsConfigurationError);
+  });
+
+  it("requires the exact real-mode activation triple and returns the real mode", () => {
+    const env = requiredEnv();
+    env.TMS_MODE = "real";
+    env.TMS_ENV = "non-production";
+    env.TMS_REAL_ENABLED = "true";
+
+    expect(getTmsConfig(env)).toMatchObject({ mode: "real", maxFrameBytes: DEFAULT_TMS_FRAME_BYTES });
+  });
+
+  it.each([
+    { TMS_MODE: "real", TMS_ENV: "non-production", TMS_REAL_ENABLED: "false" },
+    { TMS_MODE: "REAL", TMS_ENV: "non-production", TMS_REAL_ENABLED: "true" },
+    { TMS_MODE: "real", TMS_ENV: "production", TMS_REAL_ENABLED: "true" },
+    { TMS_MODE: "real ", TMS_ENV: "non-production", TMS_REAL_ENABLED: "true" },
+  ])("rejects non-exact real activation flags %j", (flags) => {
+    expect(() => getTmsConfig({ ...requiredEnv(), ...flags })).toThrow(TmsConfigurationError);
+  });
+
+  it("rejects a real response frame limit above the handbook request limit", () => {
+    expect(() => getTmsConfig({
+      ...requiredEnv(),
+      TMS_MODE: "real",
+      TMS_ENV: "non-production",
+      TMS_REAL_ENABLED: "true",
+      TMS_MAX_FRAME_BYTES: "4097",
+    })).toThrow(TmsConfigurationError);
   });
 
   it.each(["0", "-1", "1.5", "NaN", "Infinity"])("rejects non-positive or non-integer numeric configuration %j", (value) => {
