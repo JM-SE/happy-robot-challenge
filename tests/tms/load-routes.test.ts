@@ -1,14 +1,14 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { POST as search } from "../../app/api/tms/loads/search/route";
 import { POST as detail } from "../../app/api/tms/loads/detail/route";
 import { createMockLtmsServer } from "../../mock/ltms-server";
 
 function configureTms(host: string, port: number): void {
-  process.env.TMS_HOST = host;
-  process.env.TMS_PORT = String(port);
-  process.env.TMS_AUTH_TOKEN = "test-token";
-  process.env.TMS_CONNECT_TIMEOUT_MS = "1000";
-  process.env.TMS_RESPONSE_TIMEOUT_MS = "1000";
+  vi.stubEnv("TMS_HOST", host);
+  vi.stubEnv("TMS_PORT", String(port));
+  vi.stubEnv("TMS_AUTH_TOKEN", "test-token");
+  vi.stubEnv("TMS_CONNECT_TIMEOUT_MS", "1000");
+  vi.stubEnv("TMS_RESPONSE_TIMEOUT_MS", "1000");
 }
 
 describe("read-only load routes", () => {
@@ -17,6 +17,7 @@ describe("read-only load routes", () => {
   afterEach(async () => {
     await server?.stop();
     server = undefined;
+    vi.unstubAllEnvs();
   });
 
   it("searches by the public DTO and does not expose MAX_BUY", async () => {

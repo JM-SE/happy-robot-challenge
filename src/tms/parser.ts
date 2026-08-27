@@ -85,7 +85,8 @@ export class LtmsResponseParser {
       if (line.startsWith("ERR|")) {
         const fields = parseFields(line.slice(4));
         if (!fields.CODE) throw new TmsProtocolError("Remote error is missing CODE.");
-        throw new TmsRemoteError(fields.CODE, fields.MSG ?? "");
+        if (fields.MSG === undefined) throw new TmsProtocolError("Remote error is missing MSG.");
+        throw new TmsRemoteError(fields.CODE, fields.MSG);
       }
 
       if (!line) throw new TmsProtocolError("Empty response record.");

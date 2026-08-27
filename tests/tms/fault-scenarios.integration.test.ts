@@ -128,6 +128,40 @@ describe("configurable local fault scenarios over TCP", () => {
     expect(server.dispatchCount).toBe(0);
   });
 
+  it("treats a post-dispatch booking timeout as uncertain without retrying", async () => {
+    server = createMockLtmsServer({
+      port: 0,
+      authToken: "test-token",
+      fault: MOCK_FAULT_SCENARIOS.DELAYED_END,
+      faultDelayMs: 100,
+    });
+    const address = await server.start();
+    const client = new TmsClient(testConfig({
+      host: address.host,
+      port: address.port,
+      responseTimeoutMs: 25,
+    }));
+
+    await expect(client.execute({
+      command: "LOAD_BOOK",
+      fields: { LOAD_ID: "LOAD-1001", MC_NUM: "12345", AGREED_RATE: 2200 },
+    })).rejects.toMatchObject({
+      type: "TMS_TIMEOUT",
+      code: "RESPONSE_TIMEOUT",
+      retryable: false,
+    });
+    expect(server.requestCount).toBe(1);
+    expect(server.dispatchCount).toBe(1);
+
+    await new Promise((resolve) => setTimeout(resolve, 125));
+    await expect(new TmsClient(testConfig({ host: address.host, port: address.port })).execute({
+      command: "LOAD_BOOK",
+      fields: { LOAD_ID: "LOAD-1001", MC_NUM: "12345", AGREED_RATE: 2200 },
+    })).rejects.toMatchObject({ code: "ALREADY_BOOKED" });
+    expect(server.requestCount).toBe(2);
+    expect(server.dispatchCount).toBe(2);
+  });
+
   it.each([
     [MOCK_FAULT_SCENARIOS.PARTIAL_WITHOUT_END, TmsResponseIncompleteError],
     [MOCK_FAULT_SCENARIOS.MALFORMED, TmsProtocolError],
@@ -137,6 +171,18 @@ describe("configurable local fault scenarios over TCP", () => {
     const address = await server.start();
     await expect(new TmsClient(testConfig({ host: address.host, port: address.port })).execute({ command: "DEBUG_ECHO", fields: { MSG: "hello" } })).rejects.toBeInstanceOf(errorType);
     expect(server.connectionCount).toBe(1);
+    expect(server.requestCount).toBe(1);
+    expect(server.dispatchCount).toBe(0);
+  });
+
+  it.each([
+    ["LOAD_QUERY", { ORIG_STATE: "TX" }],
+    ["LOAD_GET", { LOAD_ID: "LOAD-1001" }],
+    ["LOAD_BOOK", { LOAD_ID: "LOAD-1001", MC_NUM: "12345", AGREED_RATE: 2200 }],
+  ] as const)("classifies malformed upstream %s responses as protocol errors", async (command, fields) => {
+    server = createMockLtmsServer({ port: 0, authToken: "test-token", fault: MOCK_FAULT_SCENARIOS.MALFORMED });
+    const address = await server.start();
+    await expect(new TmsClient(testConfig({ host: address.host, port: address.port })).execute({ command, fields })).rejects.toBeInstanceOf(TmsProtocolError);
     expect(server.requestCount).toBe(1);
     expect(server.dispatchCount).toBe(0);
   });
@@ -192,6 +238,15 @@ describe("remote-code matrix and booking isolation", () => {
     } finally {
       await serverError.stop();
     }
+  });
+
+  it("returns MISSING_FIELD when LOAD_GET has no LOAD_ID", async () => {
+    server = createMockLtmsServer({ port: 0, authToken: "token" });
+    const address = await server.start();
+    await expect(new TmsClient(testConfig({ host: address.host, port: address.port, authToken: "token" })).execute({ command: "LOAD_GET" })).rejects.toMatchObject({
+      type: "TMS_REMOTE",
+      code: "MISSING_FIELD",
+    });
   });
 
   it("does not mutate booking state when a booking fails, and isolates instances", async () => {

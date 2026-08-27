@@ -13,7 +13,7 @@ describe("TmsClient", () => {
     const connect = () => {
       const socket = new TestSocket();
       sockets.push(socket);
-      queueMicrotask(() => { socket.emit("connect"); socket.emit("data", Buffer.from("MSG:hello\r\nEND\r\n")); });
+       queueMicrotask(() => { socket.emit("connect"); socket.emit("data", Buffer.from("MSG:hello\r\nEND\r\n")); socket.emit("end"); });
       return socket;
     };
     const client = new TmsClient(testConfig({ authToken: "token" }), connect);
@@ -48,9 +48,10 @@ describe("TmsClient", () => {
     const socket = new TestSocket();
     const client = new TmsClient(testConfig(), socketConnect(socket));
     const pending = client.execute({ command: "DEBUG_ECHO", fields: { MSG: "hello" } });
-    socket.emit("connect");
-    socket.emit("connect");
-    socket.emit("data", Buffer.from("MSG:hello\r\nEND\r\n"));
+   socket.emit("connect");
+   socket.emit("connect");
+   socket.emit("data", Buffer.from("MSG:hello\r\nEND\r\n"));
+    socket.emit("end");
     await expect(pending).resolves.toBeDefined();
     expect(socket.writes).toHaveLength(1);
     expect(socket.endCalls).toBe(1);
@@ -70,6 +71,30 @@ describe("TmsClient", () => {
     expect(socket.writes).toHaveLength(1);
     expect(socket.destroyCalls).toBe(1);
     expectNoSocketListeners(socket);
+  });
+
+  it("marks a booking timeout as non-retryable and does not retry the request", async () => {
+    vi.useFakeTimers();
+    const socket = new TestSocket();
+    const connect = vi.fn(socketConnect(socket));
+    const client = new TmsClient(testConfig({ responseTimeoutMs: 15 }), connect);
+    const pending = client.execute({ command: "LOAD_BOOK", fields: { LOAD_ID: "LOAD-1001", MC_NUM: "12345", AGREED_RATE: 2200 } });
+    let error: unknown;
+    const settled = pending.catch((caught) => {
+      error = caught;
+    });
+    socket.emit("connect");
+    await vi.advanceTimersByTimeAsync(15);
+    await settled;
+    expect(error).toMatchObject({
+      type: "TMS_TIMEOUT",
+      code: "RESPONSE_TIMEOUT",
+      retryable: false,
+      stage: "response",
+    });
+    expect(connect).toHaveBeenCalledTimes(1);
+    expect(socket.writes).toHaveLength(1);
+    expect(socket.destroyCalls).toBe(1);
   });
 
   it("settles once for error followed by close and always destroys the socket", async () => {
@@ -124,6 +149,43 @@ describe("TmsClient", () => {
     expectNoSocketListeners(socket);
   });
 
+  it("preserves protocol classification for incomplete CRLF at EOF", async () => {
+    const socket = new TestSocket();
+    const client = new TmsClient(testConfig(), socketConnect(socket));
+    const pending = client.execute({ command: "DEBUG_ECHO", fields: { MSG: "hello" } });
+    socket.emit("connect");
+    socket.emit("data", Buffer.from("MSG:partial\r"));
+    socket.emit("end");
+    await expect(pending).rejects.toMatchObject({ type: "TMS_PROTOCOL", code: "PROTOCOL_ERROR" });
+    expectNoSocketListeners(socket);
+  });
+
+  it("classifies a close before connect as a connect failure", async () => {
+    const socket = new TestSocket();
+    const client = new TmsClient(testConfig(), socketConnect(socket));
+    const pending = client.execute({ command: "DEBUG_ECHO", fields: { MSG: "hello" } });
+    socket.emit("close");
+    await expect(pending).rejects.toMatchObject({ type: "TMS_CONNECTION", stage: "connect" });
+    expect(socket.destroyCalls).toBe(0);
+    expectNoSocketListeners(socket);
+  });
+
+  it("rejects trailing bytes delivered after END on the socket seam", async () => {
+    const socket = new TestSocket();
+    const client = new TmsClient(testConfig(), socketConnect(socket));
+    const pending = client.execute({ command: "DEBUG_ECHO", fields: { MSG: "hello" } });
+    socket.emit("connect");
+    socket.emit("data", Buffer.from("MSG:hello\r\nEND\r\n"));
+    socket.emit("data", Buffer.from("TRAILING:bytes\r\n"));
+    let error: unknown;
+    try {
+      await pending;
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error).toBeInstanceOf(TmsProtocolError);
+  });
+
   it("maps write errors to the write stage without retrying", async () => {
     const socket = new TestSocket();
     socket.writeError = new Error("write failed");
@@ -163,6 +225,7 @@ describe("TmsClient", () => {
     const pending = client.execute({ command: "DEBUG_ECHO", fields: { MSG: "safe-message" } });
     socket.emit("connect");
     socket.emit("data", Buffer.from("MSG:safe-message\r\nEND\r\n"));
+    socket.emit("end");
     await pending;
     expect(JSON.stringify(log.mock.calls)).not.toContain("super-secret");
     expect(JSON.stringify(log.mock.calls)).not.toContain("safe-message");

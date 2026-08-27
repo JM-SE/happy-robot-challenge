@@ -2,7 +2,7 @@
 
 ## Context
 
-El repositorio `C:\Users\User\Desktop\Projects\happy-robot-challenge` está vacío. El handoff original de LTMS TCP era demasiado amplio para un único checkpoint, por lo que se divide en cuatro fases incrementales, cada una ejecutable y verificable por separado. El checkpoint actual es únicamente **Phase 1A**.
+El handoff original de LTMS TCP era demasiado amplio para un único checkpoint, por lo que se dividió en cuatro fases incrementales, cada una ejecutable y verificable por separado. Las fases **1A, 1B, 1C y 1D están implementadas y verificadas**; este índice conserva el routing normativo y registra Phase 1D como el cierre actual de la fase.
 
 No aplica Visual Fidelity: no hay UI, maquetación, Figma ni revisión de drift en ninguna fase de este índice.
 
@@ -34,7 +34,7 @@ No aplica Visual Fidelity: no hay UI, maquetación, Figma ni revisión de drift 
 
 - [ ] Entregar codec/builder, parser incremental, transporte, cliente, configuración, errores, validación HTTP, mappers, servicio y mock como responsabilidades separadas a medida que cada fase los necesite.
 - [ ] Centralizar límites, nombres wire, códigos remotos, status mapping, formatting y redacción de logs; no duplicar literales entre handlers y tests.
-- [ ] Mantener `MAX_BUY` y `NOTES` completas en el ámbito interno únicamente desde 1B; probar la frontera pública en 1B–1D.
+- [ ] Mantener `MAX_BUY` en el ámbito interno únicamente desde 1B; `NOTES` forma parte del DTO público de cargas, pero nunca aparece completa en logs ni metadata diagnóstica.
 - [ ] Mantener el mock independiente del cliente productivo y proporcionar seams para probar el cliente sin sockets cuando sea apropiado.
 
 ## Modularity Risks
@@ -67,14 +67,14 @@ No aplica Visual Fidelity: no hay UI, maquetación, Figma ni revisión de drift 
 - [ ] Un gate posterior no puede degradar el comportamiento ya aceptado de una fase anterior.
 - [ ] La ausencia de un filtro en `LOAD_QUERY`, una carga inexistente, una reserva duplicada y un timeout de booking conservan sus contratos de error definidos por la fase correspondiente.
 - [ ] El EOF prematuro, la respuesta vacía válida (`END\r\n`) y los códigos remotos desconocidos deben distinguirse correctamente.
-- [ ] Ninguna fase expone `AUTH`, `MAX_BUY`, secretos, stack traces o `NOTES` completas.
+- [ ] Ninguna fase expone `AUTH`, `MAX_BUY`, secretos, stack traces ni `NOTES` completas en logs o metadata diagnóstica; `NOTES` se devuelve solo como campo del DTO público de cargas definido en 1B.
 
 ## Verification Plan
 
-- [ ] **Gate 1A — checkpoint actual:** instalación mínima, typecheck, tests esenciales, route echo, mock happy path/ERR, nuevo socket por request, cleanup y ausencia de secretos.
-- [ ] **Gate 1B:** ambos comandos read-only, DTO/mapping exactos, dataset requerido, parser de records múltiples/formato y no mutación.
-- [ ] **Gate 1C:** booking disponible→BOOKED, booking ref/timestamp UTC, conflictos/validaciones/errores y timeout sin retry.
-- [ ] **Gate 1D:** matriz exhaustiva builder/parser/client/routes/integration, fault injection, no handles abiertos, `typecheck`, `build`, `test`, `lint` y README final.
+- [x] **Gate 1A:** instalación mínima, typecheck, tests esenciales, route echo, mock happy path/ERR, nuevo socket por request, cleanup y ausencia de secretos.
+- [x] **Gate 1B:** ambos comandos read-only, DTO/mapping exactos, dataset requerido, parser de records múltiples/formato y no mutación.
+- [x] **Gate 1C:** booking disponible→BOOKED, booking ref/timestamp UTC, conflictos/validaciones/errores y timeout sin retry.
+- [x] **Gate 1D:** matriz exhaustiva builder/parser/client/routes/integration, fault injection, no handles abiertos, `typecheck`, `build`, `test`, `lint` y README final.
 - [ ] Todas las verificaciones usan mock local, seams y puertos efímeros; nunca red externa.
 
 ## Rollback Plan
@@ -86,7 +86,7 @@ No aplica Visual Fidelity: no hay UI, maquetación, Figma ni revisión de drift 
 ## Acceptance Criteria
 
 - [ ] El índice identifica claramente 1A–1D, sus dependencias, gates y no-goals.
-- [ ] Solo 1A está marcada como checkpoint actual.
+- [x] Las fases 1A–1D están cerradas; Phase 1D es el checkpoint final de Phase 1.
 - [ ] Todas las obligaciones del handoff original quedan redistribuidas y enlazadas en las cuatro specs de fase, sin requisitos eliminados.
 - [ ] 1A permanece deliberadamente pequeña: solo echo, fundamentos mínimos, mock simple y pruebas esenciales.
 - [ ] 1B, 1C y 1D enumeran explícitamente sus obligaciones completas, sin ejecutar prematuramente alcance de fases posteriores.

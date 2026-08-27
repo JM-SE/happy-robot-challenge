@@ -20,7 +20,7 @@ npm install
 Copy-Item .env.example .env.local
 ```
 
-The TMS settings are server-only: `TMS_HOST`, `TMS_PORT`, `TMS_AUTH_TOKEN`, `TMS_CONNECT_TIMEOUT_MS`, `TMS_RESPONSE_TIMEOUT_MS` and optional `TMS_MAX_FRAME_BYTES` (default `4096`). Never use `NEXT_PUBLIC_` for them. The `TMS_MOCK_*` variables affect only the local mock CLI.
+The TMS settings are server-only: `TMS_HOST`, `TMS_PORT` (1–65535), `TMS_AUTH_TOKEN`, `TMS_CONNECT_TIMEOUT_MS`, `TMS_RESPONSE_TIMEOUT_MS` and optional `TMS_MAX_FRAME_BYTES` (default `4096`). Never use `NEXT_PUBLIC_` for them. The `TMS_MOCK_*` variables affect only the local mock CLI.
 
 ## Run locally
 
@@ -81,7 +81,7 @@ curl -X POST http://localhost:3000/api/tms/loads/book `
 
 The mock transitions each load from `AVAILABLE` to `BOOKED`, returns a booking reference and an ISO-8601 UTC timestamp, and rejects a second booking with `409 ALREADY_BOOKED`. The mock also applies the internal `MAX_BUY` policy to reject an excessive agreed rate with `422 INVALID_RATE`; the threshold is never returned publicly.
 
-Booking has no automatic retry. If a timeout occurs after the request was sent, the result is considered uncertain and the caller must not submit a second booking automatically.
+Booking has no automatic retry. If a timeout, connection failure or upstream `SERVER_ERROR` occurs after the request was sent, the result is considered uncertain and the caller must not submit a second booking automatically; these booking errors are exposed with `retryable: false`.
 
 ## Tests
 
@@ -102,6 +102,8 @@ The tests cover the request builder, incremental `Buffer` parser, arbitrary chun
 - Authentication tokens and complete wire payloads are never logged or returned.
 - The transport has a small seam so a future `node:tls` transport can be added without changing protocol parsing, but TLS is not implemented yet.
 - Parser diagnostics are bounded and redact sensitive fields such as `AUTH`, `TOKEN`, `MAX_BUY` and `NOTES`; HTTP errors expose stable public messages only.
+- Singular operations validate their upstream response shape: echo, detail and booking require exactly one valid record. Malformed upstream records are reported as HTTP `502`, not as caller validation errors.
+- A response is complete only after `END\r\n` and the peer's TCP close; this lets the client reject bytes that arrive after the terminal frame.
 
 ## Fault injection
 

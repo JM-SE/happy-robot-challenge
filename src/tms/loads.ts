@@ -1,4 +1,4 @@
-import { TmsValidationError } from "./errors";
+import { TmsUpstreamError, TmsValidationError } from "./errors";
 import type { LoadDetailInput, LoadInternal, LoadPublic, LoadQueryInput, TmsRecord } from "./types";
 
 export const MAX_RESULTS_LIMIT = 50;
@@ -102,7 +102,7 @@ export function toLoadDetailFields(input: LoadDetailInput): Record<string, strin
 
 function requiredField(fields: Record<string, string>, name: string): string {
   const value = fields[name];
-  if (value === undefined) throw new TmsValidationError(`Load response is missing ${name}.`);
+  if (value === undefined || !value) throw new TmsUpstreamError(`Load response is missing ${name}.`);
   return value;
 }
 
@@ -110,7 +110,7 @@ export function recordToLoadInternal(record: TmsRecord): LoadInternal {
   const fields = record.fields;
   const rate = Number(requiredField(fields, "RATE"));
   const maxBuy = Number(requiredField(fields, "MAX_BUY"));
-  if (!Number.isFinite(rate) || !Number.isFinite(maxBuy)) throw new TmsValidationError("Load response contains invalid rate data.");
+  if (!Number.isFinite(rate) || !Number.isFinite(maxBuy)) throw new TmsUpstreamError("Load response contains invalid rate data.");
   return {
     loadId: requiredField(fields, "LOAD_ID"),
     originState: requiredField(fields, "ORIG_STATE"),

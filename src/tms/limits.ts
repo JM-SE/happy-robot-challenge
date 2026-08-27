@@ -1,2 +1,3 @@
 export const DEFAULT_TMS_FRAME_BYTES = 4096;
 export const MAX_TMS_RAW_LINE_BYTES = 256;
+export const MAX_TMS_PORT = 65535;

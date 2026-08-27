@@ -110,6 +110,10 @@ describe("LtmsResponseParser", () => {
     (response) => expect(() => parseResponse(response)).toThrow(),
   );
 
+  it("classifies an ERR terminal without MSG as a protocol error", () => {
+    expect(() => parseResponse("ERR|CODE:SERVER_ERROR\r\n")).toThrow(TmsProtocolError);
+  });
+
   it("rejects unknown terminals and anything after END", () => {
     expect(() => parseResponse("DONE\r\n")).toThrow(TmsProtocolError);
     expect(() => parseResponse("A:value\r\nEND\r\nDONE\r\n")).toThrow(TmsProtocolError);

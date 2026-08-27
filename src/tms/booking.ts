@@ -1,4 +1,4 @@
-import { TmsValidationError } from "./errors";
+import { TmsUpstreamError, TmsValidationError } from "./errors";
 import type { BookLoadInput, BookingPublic, TmsRecord } from "./types";
 
 const MAX_RATE = 1_000_000_000;
@@ -56,13 +56,13 @@ export function toBookLoadFields(input: BookLoadInput): Record<string, string | 
 
 function required(fields: Record<string, string>, name: string): string {
   const value = fields[name];
-  if (value === undefined || !value) throw new TmsValidationError(`Booking response is missing ${name}.`);
+  if (value === undefined || !value) throw new TmsUpstreamError(`Booking response is missing ${name}.`);
   return value;
 }
 
 export function recordToBookingPublic(record: TmsRecord): BookingPublic {
   const agreedRate = Number(required(record.fields, "AGREED_RATE"));
-  if (!Number.isFinite(agreedRate)) throw new TmsValidationError("Booking response contains an invalid rate.");
+  if (!Number.isFinite(agreedRate)) throw new TmsUpstreamError("Booking response contains an invalid rate.");
   return {
     loadId: required(record.fields, "LOAD_ID"),
     mcNumber: required(record.fields, "MC_NUM"),

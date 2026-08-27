@@ -102,6 +102,15 @@ describe("route validation and fault mapping", () => {
     expect(JSON.stringify(body)).not.toContain("secret|token");
   });
 
+  it("rejects unknown echo fields instead of forwarding them upstream", async () => {
+    const response = await echo(jsonRequest("/api/tms/echo", JSON.stringify({ message: "hello", unexpected: "field" })));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      error: { type: "TMS_VALIDATION", code: "VALIDATION_ERROR" },
+    });
+  });
+
   it("maps a real remote fault through a route without exposing remote diagnostics", async () => {
     const server = createMockLtmsServer({
       port: 0,

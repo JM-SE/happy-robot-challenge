@@ -6,6 +6,7 @@ export function json(body: unknown, status: number): Response {
 
 const HTTP_STATUS_BY_ERROR_TYPE: Record<string, number> = {
   TMS_VALIDATION: 400,
+  TMS_UPSTREAM: 502,
   TMS_CONFIGURATION: 503,
   TMS_TIMEOUT: 504,
   TMS_REMOTE: 502,
@@ -20,6 +21,7 @@ const FIXED_PUBLIC_MESSAGES: Record<string, string> = {
   TMS_PROTOCOL: "The TMS response was invalid.",
   TMS_RESPONSE_INCOMPLETE: "The TMS connection closed before a complete response was received.",
   TMS_CONNECTION: "The TMS connection failed.",
+  TMS_UPSTREAM: "The TMS returned an invalid response.",
 };
 
 function getHttpStatus(error: TmsAdapterError): number {

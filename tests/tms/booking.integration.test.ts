@@ -29,4 +29,22 @@ describe("stateful booking TCP integration", () => {
     const config: TmsConfig = { host: firstAddress.host, port: firstAddress.port, authToken: "token", connectTimeoutMs: 1000, responseTimeoutMs: 1000, maxFrameBytes: 4096 };
     await expect(new TmsClient(config).execute({ command: "LOAD_BOOK", fields: { LOAD_ID: "LOAD-1001", MC_NUM: "12345", AGREED_RATE: 2200 } })).rejects.toBeInstanceOf(TmsRemoteError);
   });
+
+  it("allows at most one successful concurrent booking for the same load", async () => {
+    server = createMockLtmsServer({ port: 0, authToken: "token" });
+    const address = await server.start();
+    const config: TmsConfig = { host: address.host, port: address.port, authToken: "token", connectTimeoutMs: 1000, responseTimeoutMs: 1000, maxFrameBytes: 4096 };
+    const request = { command: "LOAD_BOOK" as const, fields: { LOAD_ID: "LOAD-1001", MC_NUM: "12345", AGREED_RATE: 2200 } };
+
+    const results = await Promise.allSettled([
+      new TmsClient(config).execute(request),
+      new TmsClient(config).execute(request),
+    ]);
+
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    const rejected = results.filter((result) => result.status === "rejected");
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]).toMatchObject({ reason: { type: "TMS_REMOTE", code: "ALREADY_BOOKED" } });
+    expect(server.requestCount).toBe(2);
+  });
 });

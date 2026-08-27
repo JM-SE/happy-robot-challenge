@@ -89,6 +89,7 @@ function dispatchCommand(fields: Map<string, string>, bookingState: LoadBookingS
     return hasFilter ? loadQueryResponse(fields) : loadErrorFrame("MISSING_FIELD", "A load filter is required");
   }
   if (command === "LOAD_GET") {
+    if (!fields.has("LOAD_ID")) return loadErrorFrame("MISSING_FIELD", "LOAD_ID is required");
     const load = LOAD_DATASET.find((candidate) => candidate.loadId === fields.get("LOAD_ID"));
     return load ? Buffer.concat([loadFrame(load, false), Buffer.from("END\r\n")]) : loadErrorFrame("UNKNOWN_LOAD", "Load was not found");
   }

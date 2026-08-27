@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { POST } from "../../app/api/tms/echo/route";
 import { createMockLtmsServer } from "../../mock/ltms-server";
 
@@ -8,17 +8,18 @@ describe("POST /api/tms/echo", () => {
   afterEach(async () => {
     await server?.stop();
     server = undefined;
+    vi.unstubAllEnvs();
   });
 
   it("returns normalized echo data and never returns the auth token", async () => {
     server = createMockLtmsServer({ port: 0, authToken: "test-secret" });
     const address = await server.start();
-    process.env.TMS_HOST = address.host;
-    process.env.TMS_PORT = String(address.port);
-    process.env.TMS_AUTH_TOKEN = "test-secret";
-    process.env.TMS_CONNECT_TIMEOUT_MS = "1000";
-    process.env.TMS_RESPONSE_TIMEOUT_MS = "1000";
-    process.env.TMS_MAX_FRAME_BYTES = "4096";
+    vi.stubEnv("TMS_HOST", address.host);
+    vi.stubEnv("TMS_PORT", String(address.port));
+    vi.stubEnv("TMS_AUTH_TOKEN", "test-secret");
+    vi.stubEnv("TMS_CONNECT_TIMEOUT_MS", "1000");
+    vi.stubEnv("TMS_RESPONSE_TIMEOUT_MS", "1000");
+    vi.stubEnv("TMS_MAX_FRAME_BYTES", "4096");
 
     const response = await POST(new Request("http://localhost/api/tms/echo", {
       method: "POST", body: JSON.stringify({ message: "hello" }), headers: { "content-type": "application/json" },

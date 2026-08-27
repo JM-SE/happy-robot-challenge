@@ -43,6 +43,18 @@ export class TmsValidationError extends TmsAdapterError {
   }
 }
 
+export class TmsUpstreamError extends TmsAdapterError {
+  constructor(message: string) {
+    super({
+      type: "TMS_UPSTREAM",
+      code: "UPSTREAM_RESPONSE_INVALID",
+      message,
+      retryable: false,
+      stage: "response",
+    });
+  }
+}
+
 export class TmsConnectionError extends TmsAdapterError {
   constructor(message: string, stage: "connect" | "write" | "response" = "connect") {
     super({ type: "TMS_CONNECTION", code: "CONNECTION_ERROR", message, retryable: true, stage });
@@ -84,13 +96,13 @@ export class TmsResponseIncompleteError extends TmsAdapterError {
 export class TmsRemoteError extends TmsAdapterError {
   readonly remoteCode: string;
 
-  constructor(remoteCode: string, remoteMessage = "") {
+  constructor(remoteCode: string, remoteMessage = "", retryable = true) {
     const safeCode = remoteCode.replace(/[^A-Z0-9_]/g, "_").slice(0, 64) || "UNKNOWN";
     super({
       type: "TMS_REMOTE",
       code: safeCode,
       message: remoteMessage ? `The TMS rejected the request (${safeCode}).` : `The TMS rejected the request (${safeCode}).`,
-      retryable: safeCode === "SERVER_ERROR",
+      retryable: retryable && safeCode === "SERVER_ERROR",
       stage: "response",
       metadata: { remoteCode: safeCode },
     });

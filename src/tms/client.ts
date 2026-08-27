@@ -3,7 +3,7 @@ import { buildRequest } from "./protocol";
 import {
   TmsAdapterError,
   TmsConnectionError,
-  TmsResponseIncompleteError,
+  TmsRemoteError,
   TmsTimeoutError,
 } from "./errors";
 import { logTmsEvent } from "./logger";
@@ -25,6 +25,7 @@ export class TmsClient {
     let settled = false;
     let connected = false;
     let writeStarted = false;
+    let terminalResult: TmsParsedResponse | undefined;
     const parser = new LtmsResponseParser(this.config.maxFrameBytes);
 
     const log = (outcome: "success" | "error", error?: unknown, records?: number) => {
@@ -60,8 +61,20 @@ export class TmsClient {
         cleanupListeners();
         if (destroy) socket?.destroy();
         const normalized = error instanceof TmsAdapterError ? error : new TmsConnectionError("The TMS connection failed.", connected ? "response" : "connect");
-        log("error", normalized);
-        reject(normalized);
+        const publicError = request.command === "LOAD_BOOK" && normalized.retryable
+          ? normalized instanceof TmsRemoteError
+            ? new TmsRemoteError(normalized.remoteCode, "", false)
+            : new TmsAdapterError({
+              type: normalized.type,
+              code: normalized.code,
+              message: normalized.message,
+              retryable: false,
+              stage: normalized.stage,
+              metadata: normalized.metadata,
+            })
+          : normalized;
+        log("error", publicError);
+        reject(publicError);
       };
 
       const settleSuccess = (result: TmsParsedResponse) => {
@@ -99,8 +112,8 @@ export class TmsClient {
       const onData = (chunk: unknown) => {
         if (settled) return;
         try {
-          const result = parser.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
-          if (result) settleSuccess(result);
+           const result = parser.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+           if (result) terminalResult = result;
         } catch (error) {
           settleError(error);
         }
@@ -108,10 +121,27 @@ export class TmsClient {
 
       const onError = () => settleError(new TmsConnectionError("The TMS connection failed.", connected ? "response" : "connect"));
       const onEnd = () => {
-        if (!settled) settleError(new TmsResponseIncompleteError());
+        if (settled) return;
+        if (terminalResult) settleSuccess(terminalResult);
+        else {
+          try {
+            parser.finish();
+          } catch (error) {
+            settleError(error);
+          }
+        }
       };
       const onClose = () => {
-        if (!settled) settleError(new TmsResponseIncompleteError(), false);
+        if (settled) return;
+        if (terminalResult) settleSuccess(terminalResult);
+        else if (!connected) settleError(new TmsConnectionError("The TMS connection closed before it connected.", "connect"), false);
+        else {
+          try {
+            parser.finish();
+          } catch (error) {
+            settleError(error, false);
+          }
+        }
       };
 
       connectTimer = setTimeout(() => settleError(new TmsTimeoutError("CONNECT_TIMEOUT")), this.config.connectTimeoutMs);
