@@ -72,6 +72,8 @@ function loadQueryResponse(fields: Map<string, string>): Buffer {
     if (fields.has("DEST_STATE") && !matchesValue("destinationState", fields.get("DEST_STATE") ?? "", true)) return false;
     if (fields.has("ORIG_CITY") && !matchesValue("originCity", fields.get("ORIG_CITY") ?? "")) return false;
     if (fields.has("DEST_CITY") && !matchesValue("destinationCity", fields.get("DEST_CITY") ?? "")) return false;
+    if (fields.has("ORIG_ZIP") && !matchesValue("originZip", fields.get("ORIG_ZIP") ?? "")) return false;
+    if (fields.has("DEST_ZIP") && !matchesValue("destinationZip", fields.get("DEST_ZIP") ?? "")) return false;
     if (fields.has("EQTYPE") && !matchesValue("equipmentType", fields.get("EQTYPE") ?? "", true)) return false;
     return true;
   });
@@ -85,7 +87,7 @@ function dispatchCommand(fields: Map<string, string>, bookingState: LoadBookingS
   if (command === "DEBUG_ECHO" && !fields.has("MSG")) return errorFrame("MISSING_FIELD", "MSG is required");
   if (command === "DEBUG_ECHO") return responseFrame(fields.get("MSG") ?? "", fields.size);
   if (command === "LOAD_QUERY") {
-    const hasFilter = ["ORIG_STATE", "DEST_STATE", "ORIG_CITY", "DEST_CITY", "EQTYPE"].some((field) => fields.has(field));
+    const hasFilter = ["ORIG_STATE", "DEST_STATE", "ORIG_CITY", "DEST_CITY", "ORIG_ZIP", "DEST_ZIP", "EQTYPE"].some((field) => fields.has(field));
     return hasFilter ? loadQueryResponse(fields) : loadErrorFrame("MISSING_FIELD", "A load filter is required");
   }
   if (command === "LOAD_GET") {

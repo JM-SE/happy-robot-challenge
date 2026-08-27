@@ -8,6 +8,8 @@ const SEARCH_FIELDS = [
   "destinationState",
   "originCity",
   "destinationCity",
+  "originZip",
+  "destinationZip",
   "equipmentType",
 ] as const;
 
@@ -31,6 +33,11 @@ function normalizeState(value: unknown, name: string): string {
 }
 
 function normalizeCity(value: unknown, name: string): string {
+  if (typeof value !== "string") throw new TmsValidationError(`${name} must be a string.`);
+  return assertSafeText(value, name);
+}
+
+function normalizeZip(value: unknown, name: string): string {
   if (typeof value !== "string") throw new TmsValidationError(`${name} must be a string.`);
   return assertSafeText(value, name);
 }
@@ -64,6 +71,8 @@ export function parseLoadQueryInput(body: unknown): LoadQueryInput {
   if (source.destinationState !== undefined) input.destinationState = normalizeState(source.destinationState, "destinationState");
   if (source.originCity !== undefined) input.originCity = normalizeCity(source.originCity, "originCity");
   if (source.destinationCity !== undefined) input.destinationCity = normalizeCity(source.destinationCity, "destinationCity");
+  if (source.originZip !== undefined) input.originZip = normalizeZip(source.originZip, "originZip");
+  if (source.destinationZip !== undefined) input.destinationZip = normalizeZip(source.destinationZip, "destinationZip");
   if (source.equipmentType !== undefined) input.equipmentType = normalizeEquipmentType(source.equipmentType);
   if (source.maxResults !== undefined) input.maxResults = normalizeMaxResults(source.maxResults);
 
@@ -91,6 +100,8 @@ export function toLoadQueryFields(input: LoadQueryInput): Record<string, string 
     ["DEST_STATE", input.destinationState],
     ["ORIG_CITY", input.originCity],
     ["DEST_CITY", input.destinationCity],
+    ["ORIG_ZIP", input.originZip],
+    ["DEST_ZIP", input.destinationZip],
     ["EQTYPE", input.equipmentType],
     ["MAX_RESULTS", input.maxResults],
   ].filter((entry): entry is [string, string | number] => entry[1] !== undefined));
@@ -98,6 +109,22 @@ export function toLoadQueryFields(input: LoadQueryInput): Record<string, string 
 
 export function toLoadDetailFields(input: LoadDetailInput): Record<string, string> {
   return { LOAD_ID: input.loadId };
+}
+
+export function recordToPublicLoad(record: TmsRecord): LoadPublic {
+  const fields = record.fields;
+  const rate = Number(requiredField(fields, "RATE"));
+  if (!Number.isFinite(rate)) throw new TmsUpstreamError("Load response contains invalid rate data.");
+  return {
+    loadId: requiredField(fields, "LOAD_ID"),
+    originState: requiredField(fields, "ORIG_STATE"),
+    destinationState: requiredField(fields, "DEST_STATE"),
+    originCity: requiredField(fields, "ORIG_CITY"),
+    destinationCity: requiredField(fields, "DEST_CITY"),
+    equipmentType: requiredField(fields, "EQTYPE"),
+    rate,
+    notes: fields.NOTES ?? "",
+  };
 }
 
 function requiredField(fields: Record<string, string>, name: string): string {

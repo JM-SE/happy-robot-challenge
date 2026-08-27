@@ -1,6 +1,6 @@
 import { TmsRemoteError, TmsUpstreamError } from "./errors";
 import { recordToBookingPublic, toBookLoadFields } from "./booking";
-import { recordToLoadInternal, toLoadDetailFields, toLoadQueryFields, toPublicLoad } from "./loads";
+import { recordToPublicLoad, toLoadDetailFields, toLoadQueryFields } from "./loads";
 import type { BookLoadInput, BookingPublic, LoadDetailInput, LoadPublic, LoadQueryInput, TmsCommandRequest, TmsParsedResponse } from "./types";
 
 export interface LoadTmsPort {
@@ -16,14 +16,14 @@ function requireSingleRecord(response: TmsParsedResponse, operation: string) {
 
 export async function searchLoads(input: LoadQueryInput, port: LoadTmsPort): Promise<LoadPublic[]> {
   const response = await port.execute({ command: "LOAD_QUERY", fields: toLoadQueryFields(input) });
-  return response.records.map(recordToLoadInternal).map(toPublicLoad);
+  return response.records.map(recordToPublicLoad);
 }
 
 export async function getLoad(input: LoadDetailInput, port: LoadTmsPort): Promise<LoadPublic> {
   const response = await port.execute({ command: "LOAD_GET", fields: toLoadDetailFields(input) });
   if (!response.records.length) throw new TmsRemoteError("UNKNOWN_LOAD", "Load was not found.");
   const record = requireSingleRecord(response, "LOAD_GET");
-  return toPublicLoad(recordToLoadInternal(record));
+  return recordToPublicLoad(record);
 }
 
 export async function bookLoad(input: BookLoadInput, port: LoadTmsPort): Promise<BookingPublic> {

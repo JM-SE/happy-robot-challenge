@@ -23,4 +23,17 @@ describe("read-only load TCP integration", () => {
     expect(server.connectionCount).toBe(2);
     expect(server.requestCount).toBe(2);
   });
+
+  it("accepts ZIP-only filters and applies them without inventing dataset matches", async () => {
+    server = createMockLtmsServer({ port: 0, authToken: "token" });
+    const address = await server.start();
+    const config: TmsConfig = { mode: "mock", host: address.host, port: address.port, authToken: "token", connectTimeoutMs: 1000, responseTimeoutMs: 1000, maxFrameBytes: 4096 };
+    const client = new TmsClient(config);
+
+    const response = await client.execute({ command: "LOAD_QUERY", fields: { ORIG_ZIP: "75201" } });
+
+    expect(response.records).toEqual([]);
+    expect(server.requestCount).toBe(1);
+    expect(server.dispatchCount).toBe(1);
+  });
 });

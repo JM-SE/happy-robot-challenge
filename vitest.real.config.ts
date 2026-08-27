@@ -9,7 +9,7 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["tests/tms/real/**/*.test.ts"],
+    include: ["tests/tms/real/echo.test.ts"],
     clearMocks: true,
     restoreMocks: true,
     unstubEnvs: true,

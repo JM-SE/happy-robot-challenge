@@ -8,18 +8,22 @@ import {
 } from "./errors";
 import { logTmsEvent } from "./logger";
 import { LtmsResponseParser } from "./parser";
-import { assertTmsCommandAllowed } from "./policy";
+import { assertTmsCommandAllowed, type TmsCommandPolicy } from "./policy";
 import { connectTcp, type TmsConnect, type TmsSocket } from "./transport";
 import type { TmsCommandRequest, TmsConfig, TmsParsedResponse } from "./types";
 
 export type TmsClientRequest = TmsCommandRequest;
 
 export class TmsClient {
-  constructor(private readonly config: TmsConfig, private readonly connect: TmsConnect = connectTcp) {}
+  constructor(
+    private readonly config: TmsConfig,
+    private readonly connect: TmsConnect = connectTcp,
+    private readonly policy?: TmsCommandPolicy,
+  ) {}
 
   execute(request: TmsClientRequest): Promise<TmsParsedResponse> {
     try {
-      assertTmsCommandAllowed(this.config, request.command);
+      assertTmsCommandAllowed(this.config, request.command, this.policy);
     } catch (error) {
       return Promise.reject(error);
     }

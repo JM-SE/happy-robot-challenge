@@ -1,4 +1,4 @@
-# HappyRobot LTMS Adapter — Phase 2A
+# HappyRobot LTMS Adapter — Phase 2A/2B
 
 This repository contains the first, minimal vertical slice of the carrier-sales TMS adapter:
 
@@ -6,7 +6,7 @@ This repository contains the first, minimal vertical slice of the carrier-sales 
 HTTP Route Handler → node:net → local LTMS mock
 ```
 
-Phase 1A–1D remains the local baseline. Phase 2A adds an explicitly opt-in validation track for the authorized candidate TMS using `DEBUG_ECHO` only. HappyRobot, FMCSA, operational real-TMS commands, persistence and deployment remain out of scope.
+Phase 1A–1D remains the local baseline. Phase 2A adds an explicitly opt-in validation track for the authorized candidate TMS using `DEBUG_ECHO`; Phase 2B adds separately guarded read-only probes for `LOAD_QUERY` and `LOAD_GET`. HappyRobot, FMCSA, real booking, persistence and deployment remain out of scope.
 
 ## Requirements
 
@@ -51,7 +51,7 @@ Expected shape:
 
 ## Read-only loads
 
-Search requires at least one filter. Supported filters are `originState`, `destinationState`, `originCity`, `destinationCity` and `equipmentType`; `maxResults` is optional and capped at 50.
+Search requires at least one filter. Supported filters are `originState`, `destinationState`, `originCity`, `destinationCity`, `originZip`, `destinationZip` and `equipmentType`; `maxResults` is optional and capped at 50. ZIP values are framed safely without assuming an undocumented width.
 
 ```powershell
 curl -X POST http://localhost:3000/api/tms/loads/search `
@@ -140,6 +140,23 @@ $env:TMS_REAL_ECHO_AUTH_INVALID = 'true' # only when explicitly authorized
 
 The real TMS handbook is `HR-LTMS-PR-001`. Its successful response uses the marker `ECHO` and fields `AUTH:OK`, `FIELDS_PARSED` and `MSG`; the public API continues returning only `{ message, fieldCount }`. A successful `DEBUG_ECHO` validates transport, authentication and parsing only. It does not validate operational commands or real fault injection.
 
+## Authorized real-TMS validation (Phase 2B read-only loads)
+
+Phase 2B is a separate opt-in track. It permits only `LOAD_QUERY` and `LOAD_GET` in addition to `DEBUG_ECHO`; it never executes `LOAD_BOOK`. The local `npm test` command never opens a real-TMS connection.
+
+In PowerShell, configure the approved query and optionally an approved load ID through the authorized runtime environment, without putting real values in source, reports or shared output:
+
+```powershell
+$env:TMS_MODE = 'real'
+$env:TMS_ENV = 'non-production'
+$env:TMS_REAL_ENABLED = 'true'
+$env:TMS_REAL_LOAD_QUERY_JSON = '{"originState":"TX","maxResults":1}'
+# Optional: $env:TMS_REAL_LOAD_ID = '<approved load id>'
+npm run test:real-tms:loads
+```
+
+The query input must be approved runtime data, not a value invented for compatibility testing. A query with zero records is a valid result; without an observed or approved load ID, `LOAD_GET` is recorded as `precondition-not-met` and is not faked. Evidence is written separately to `reports/tms/phase-2b/real-read-only-loads.json` and contains only sanitized metadata such as operation, byte counts, record counts, field names, terminal and lifecycle. It excludes host, port, token, IDs, filter values, raw wire, PII, `NOTES` and `MAX_BUY`.
+
 ## Technical decisions
 
 - Route handlers explicitly use the Node.js runtime because TCP uses `node:net`.
@@ -179,4 +196,4 @@ Stop the mock with `Ctrl+C` and restart it to reset its isolated booking state.
 
 ## Current limitations
 
-The local mock supports `DEBUG_ECHO`, read-only `LOAD_QUERY`/`LOAD_GET`, stateful `LOAD_BOOK`, remote error codes and deterministic fault scenarios. Phase 2A only adds an opt-in real `DEBUG_ECHO` runner. TLS, negotiation, real operational commands, FMCSA, HappyRobot, persistence and deployment remain out of scope.
+The local mock supports `DEBUG_ECHO`, read-only `LOAD_QUERY`/`LOAD_GET`, stateful `LOAD_BOOK`, remote error codes and deterministic fault scenarios. Phase 2A validates real `DEBUG_ECHO`; Phase 2B validates real read-only loads through a separate runner. TLS, negotiation, real booking, FMCSA, HappyRobot, persistence and deployment remain out of scope.

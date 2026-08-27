@@ -1,0 +1,69 @@
+{
+  "handbook": "HR-LTMS-PR-001",
+  "environment": "candidate-non-production",
+  "runner": "test:real-tms:loads",
+  "generatedAt": "2026-08-27T16:39:26.698Z",
+  "probes": [
+    {
+      "operation": "LOAD_QUERY",
+      "outcome": "success",
+      "durationMs": 384,
+      "requestBytes": 73,
+      "responseBytes": 253,
+      "recordCount": 1,
+      "recordTypes": [
+        "fields-only"
+      ],
+      "fieldNames": [
+        [
+          "DEST_CITY",
+          "DEST_STATE",
+          "DEST_ZIP",
+          "EQTYPE",
+          "LOAD_ID",
+          "MILES",
+          "ORIG_CITY",
+          "ORIG_STATE",
+          "ORIG_ZIP",
+          "PICKUP_DT",
+          "RATE",
+          "STATUS"
+        ]
+      ],
+      "terminalEnd": true,
+      "lifecycle": "peer-close"
+    },
+    {
+      "operation": "LOAD_GET",
+      "outcome": "success",
+      "durationMs": 337,
+      "requestBytes": 59,
+      "responseBytes": 531,
+      "recordCount": 1,
+      "recordTypes": [
+        "fields-only"
+      ],
+      "fieldNames": [
+        [
+          "DELIVERY_DT",
+          "DEST_CITY",
+          "DEST_STATE",
+          "DEST_ZIP",
+          "EQTYPE",
+          "LOAD_ID",
+          "MILES",
+          "ORIG_CITY",
+          "ORIG_STATE",
+          "ORIG_ZIP",
+          "PICKUP_DT",
+          "PIECES",
+          "RATE",
+          "STATUS",
+          "WEIGHT"
+        ]
+      ],
+      "terminalEnd": true,
+      "lifecycle": "peer-close"
+    }
+  ]
+}

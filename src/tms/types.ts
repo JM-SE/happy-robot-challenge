@@ -52,6 +52,8 @@ export interface LoadQueryInput {
   destinationState?: string;
   originCity?: string;
   destinationCity?: string;
+  originZip?: string;
+  destinationZip?: string;
   equipmentType?: string;
   maxResults?: number;
 }

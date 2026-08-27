@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:real-tms:echo": "vitest run --config vitest.real.config.ts",
+    "test:real-tms:loads": "vitest run --config vitest.real.loads.config.ts",
     "test:watch": "vitest",
     "mock:tms": "tsx mock/cli.ts",
     "typecheck": "tsc --noEmit"
