@@ -43,7 +43,7 @@ export const LOAD_DATASET: readonly LoadInternal[] = Object.freeze([
     originCity: "Chicago",
     destinationCity: "Atlanta",
     equipmentType: "REEFER",
-    rate: 3100,
+    rate: 2900,
     notes: "",
     maxBuy: 2950,
   }),
@@ -61,7 +61,7 @@ export function bookLoadInState(state: LoadBookingState[], input: {
   const current = state.find((candidate) => candidate.load.loadId === input.loadId);
   if (!current) throw new BookingStateError("UNKNOWN_LOAD", "Load was not found");
   if (current.status === "BOOKED") throw new BookingStateError("ALREADY_BOOKED", "Load is already booked");
-  if (!Number.isFinite(input.agreedRate) || input.agreedRate <= 0 || input.agreedRate > current.load.maxBuy) {
+  if (current.load.maxBuy === undefined || !Number.isFinite(input.agreedRate) || input.agreedRate <= 0 || input.agreedRate > current.load.maxBuy) {
     throw new BookingStateError("INVALID_RATE", "Agreed rate is outside the internal limit");
   }
 

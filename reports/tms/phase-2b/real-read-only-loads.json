@@ -2,12 +2,12 @@
   "handbook": "HR-LTMS-PR-001",
   "environment": "candidate-non-production",
   "runner": "test:real-tms:loads",
-  "generatedAt": "2026-08-27T16:39:26.698Z",
+  "generatedAt": "2026-08-27T19:28:38.106Z",
   "probes": [
     {
       "operation": "LOAD_QUERY",
       "outcome": "success",
-      "durationMs": 384,
+      "durationMs": 352,
       "requestBytes": 73,
       "responseBytes": 253,
       "recordCount": 1,
@@ -36,7 +36,7 @@
     {
       "operation": "LOAD_GET",
       "outcome": "success",
-      "durationMs": 337,
+      "durationMs": 335,
       "requestBytes": 59,
       "responseBytes": 531,
       "recordCount": 1,

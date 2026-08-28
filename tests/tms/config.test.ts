@@ -25,6 +25,10 @@ describe("getTmsConfig", () => {
     });
   });
 
+  it.each(["192.0.2.10", "tms.example.invalid"])("rejects an external target in mock mode: %s", (host) => {
+    expect(() => getTmsConfig({ ...requiredEnv(), TMS_HOST: host })).toThrow(TmsConfigurationError);
+  });
+
   it("accepts the lower positive-integer boundary for each numeric setting", () => {
     const env = requiredEnv();
     env.TMS_PORT = "1";

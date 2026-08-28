@@ -2,8 +2,10 @@ export type TmsErrorStage = "configuration" | "validation" | "connect" | "write"
 
 export interface TmsErrorMetadata {
   requestId?: string;
+  command?: string;
   remoteCode?: string;
   records?: number;
+  writeAttempted?: boolean;
 }
 
 export class TmsAdapterError extends Error {

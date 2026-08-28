@@ -115,6 +115,7 @@ export function recordToPublicLoad(record: TmsRecord): LoadPublic {
   const fields = record.fields;
   const rate = Number(requiredField(fields, "RATE"));
   if (!Number.isFinite(rate)) throw new TmsUpstreamError("Load response contains invalid rate data.");
+  const miles = optionalFiniteNumber(fields.MILES);
   return {
     loadId: requiredField(fields, "LOAD_ID"),
     originState: requiredField(fields, "ORIG_STATE"),
@@ -124,6 +125,9 @@ export function recordToPublicLoad(record: TmsRecord): LoadPublic {
     equipmentType: requiredField(fields, "EQTYPE"),
     rate,
     notes: fields.NOTES ?? "",
+    ...(fields.PICKUP_DT !== undefined ? { pickupDate: fields.PICKUP_DT } : {}),
+    ...(miles !== undefined ? { miles } : {}),
+    ...(fields.STATUS !== undefined ? { status: fields.STATUS } : {}),
   };
 }
 
@@ -136,8 +140,9 @@ function requiredField(fields: Record<string, string>, name: string): string {
 export function recordToLoadInternal(record: TmsRecord): LoadInternal {
   const fields = record.fields;
   const rate = Number(requiredField(fields, "RATE"));
-  const maxBuy = Number(requiredField(fields, "MAX_BUY"));
-  if (!Number.isFinite(rate) || !Number.isFinite(maxBuy)) throw new TmsUpstreamError("Load response contains invalid rate data.");
+  const maxBuy = fields.MAX_BUY === undefined ? undefined : Number(fields.MAX_BUY);
+  if (!Number.isFinite(rate) || (maxBuy !== undefined && !Number.isFinite(maxBuy))) throw new TmsUpstreamError("Load response contains invalid rate data.");
+  const miles = optionalFiniteNumber(fields.MILES);
   return {
     loadId: requiredField(fields, "LOAD_ID"),
     originState: requiredField(fields, "ORIG_STATE"),
@@ -147,8 +152,17 @@ export function recordToLoadInternal(record: TmsRecord): LoadInternal {
     equipmentType: requiredField(fields, "EQTYPE"),
     rate,
     notes: fields.NOTES ?? "",
-    maxBuy,
+    ...(maxBuy !== undefined ? { maxBuy } : {}),
+    ...(fields.PICKUP_DT !== undefined ? { pickupDate: fields.PICKUP_DT } : {}),
+    ...(miles !== undefined ? { miles } : {}),
+    ...(fields.STATUS !== undefined ? { status: fields.STATUS } : {}),
   };
+}
+
+function optionalFiniteNumber(value: string | undefined): number | undefined {
+  if (value === undefined || value.trim() === "") return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
 }
 
 export function toPublicLoad(load: LoadInternal): LoadPublic {

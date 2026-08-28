@@ -71,8 +71,11 @@ export interface LoadInternal {
   equipmentType: string;
   rate: number;
   notes: string;
+  pickupDate?: string;
+  miles?: number;
+  status?: string;
   /** Internal policy data; it must never cross the public HTTP boundary. */
-  maxBuy: number;
+  maxBuy?: number;
 }
 
 export interface LoadPublic {
@@ -84,6 +87,9 @@ export interface LoadPublic {
   equipmentType: string;
   rate: number;
   notes: string;
+  pickupDate?: string;
+  miles?: number;
+  status?: string;
 }
 
 export interface BookLoadInput {

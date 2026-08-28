@@ -9,6 +9,7 @@ export const MOCK_FAULT_SCENARIOS = {
   DELAYED_END: "delayed-end",
   FRAGMENTED: "fragmented",
   SERVER_ERROR: "server-error",
+  POST_WRITE_NO_RESPONSE: "post-write-no-response",
 } as const;
 
 export type MockFaultName = (typeof MOCK_FAULT_SCENARIOS)[keyof typeof MOCK_FAULT_SCENARIOS];
@@ -97,6 +98,8 @@ export function writePostDispatchResponse(
 ): boolean {
   if (!fault) return false;
   const { scenario } = fault;
+
+  if (scenario === MOCK_FAULT_SCENARIOS.POST_WRITE_NO_RESPONSE) return true;
 
   if (scenario === MOCK_FAULT_SCENARIOS.FRAGMENTED) {
     const fragmentSize = fault.fragmentSize ?? DEFAULT_FRAGMENT_SIZE;

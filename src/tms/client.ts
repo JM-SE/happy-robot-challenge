@@ -35,7 +35,7 @@ export class TmsClient {
     let responseTimer: ReturnType<typeof setTimeout> | undefined;
     let settled = false;
     let connected = false;
-    let writeStarted = false;
+    let writeAttempted = false;
     let terminalResult: TmsParsedResponse | undefined;
     const parser = new LtmsResponseParser(this.config.maxFrameBytes);
 
@@ -72,6 +72,8 @@ export class TmsClient {
         cleanupListeners();
         if (destroy) socket?.destroy();
         const normalized = error instanceof TmsAdapterError ? error : new TmsConnectionError("The TMS connection failed.", connected ? "response" : "connect");
+        normalized.metadata.writeAttempted = writeAttempted;
+        normalized.metadata.command = request.command;
         const publicError = request.command === "LOAD_BOOK" && normalized.retryable
           ? normalized instanceof TmsRemoteError
             ? new TmsRemoteError(normalized.remoteCode, "", false)
@@ -84,6 +86,8 @@ export class TmsClient {
               metadata: normalized.metadata,
             })
           : normalized;
+        publicError.metadata.command = request.command;
+        publicError.metadata.writeAttempted = writeAttempted;
         log("error", publicError);
         reject(publicError);
       };
@@ -99,11 +103,10 @@ export class TmsClient {
       };
 
       const onConnect = () => {
-        if (settled || writeStarted) return;
+        if (settled || writeAttempted) return;
         connected = true;
         if (connectTimer) clearTimeout(connectTimer);
         responseTimer = setTimeout(() => settleError(new TmsTimeoutError("RESPONSE_TIMEOUT")), this.config.responseTimeoutMs);
-        writeStarted = true;
         let frame: Buffer;
         try {
           frame = buildRequest({ command: request.command, authToken: this.config.authToken, fields: request.fields }, this.config.maxFrameBytes);
@@ -112,6 +115,7 @@ export class TmsClient {
           return;
         }
         try {
+          writeAttempted = true;
           socket?.write(frame, (error) => {
             if (error) settleError(new TmsConnectionError("The TMS request could not be written.", "write"));
           });

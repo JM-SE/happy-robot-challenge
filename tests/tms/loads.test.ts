@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { parseLoadDetailInput, parseLoadQueryInput, recordToPublicLoad, toLoadDetailFields, toLoadQueryFields, toPublicLoad } from "../../src/tms/loads";
+import { filterReturnedLoadsByPickupDate } from "../../src/tms/controlled-booking";
+import { parseLoadDetailInput, parseLoadQueryInput, recordToLoadInternal, recordToPublicLoad, toLoadDetailFields, toLoadQueryFields, toPublicLoad } from "../../src/tms/loads";
 
 describe("load DTOs and mappings", () => {
   it("normalizes search fields and maps them to the LTMS names", () => {
@@ -22,6 +23,8 @@ describe("load DTOs and mappings", () => {
     { originState: "TX", maxResults: 51 },
     { originState: "TX", maxResults: 1.5 },
     { originState: "TX", unexpected: "field" },
+    { originState: "TX", pickupDate: "2026-09-01" },
+    { originState: "TX", pickup_date: "2026-09-01" },
   ])("rejects invalid search input %j", (input) => {
     expect(() => parseLoadQueryInput(input)).toThrow();
   });
@@ -67,5 +70,37 @@ describe("load DTOs and mappings", () => {
       notes: "",
     });
     expect(publicLoad).not.toHaveProperty("maxBuy");
+  });
+
+  it("maps optional operational fields and omits invalid optional miles", () => {
+    const record = {
+      rawLine: "LOAD_ID:LOAD-REAL|RATE:2450",
+      fields: {
+        LOAD_ID: "LOAD-REAL",
+        ORIG_STATE: "TX",
+        DEST_STATE: "CA",
+        ORIG_CITY: "Dallas",
+        DEST_CITY: "Los Angeles",
+        EQTYPE: "DRY_VAN",
+        RATE: "2450",
+        PICKUP_DT: "2026-09-01",
+        MILES: "not-a-number",
+        STATUS: "AVAILABLE",
+      },
+    };
+
+    expect(recordToPublicLoad(record)).toMatchObject({ pickupDate: "2026-09-01", status: "AVAILABLE" });
+    expect(recordToPublicLoad(record)).not.toHaveProperty("miles");
+    expect(recordToLoadInternal(record)).not.toHaveProperty("maxBuy");
+  });
+
+  it("filters only returned loads by pickup date without changing the wire query", () => {
+    const loads = [
+      { loadId: "LOAD-1", originState: "TX", destinationState: "CA", originCity: "Dallas", destinationCity: "Los Angeles", equipmentType: "DRY_VAN", rate: 100, notes: "", pickupDate: "2026-09-01" },
+      { loadId: "LOAD-2", originState: "TX", destinationState: "CA", originCity: "Dallas", destinationCity: "Los Angeles", equipmentType: "DRY_VAN", rate: 110, notes: "" },
+      { loadId: "LOAD-3", originState: "TX", destinationState: "CA", originCity: "Dallas", destinationCity: "Los Angeles", equipmentType: "DRY_VAN", rate: 120, notes: "", pickupDate: "2026-09-02" },
+    ];
+
+    expect(filterReturnedLoadsByPickupDate(loads, (pickupDate) => pickupDate === "2026-09-01").map((load) => load.loadId)).toEqual(["LOAD-1"]);
   });
 });

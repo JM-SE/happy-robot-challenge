@@ -95,6 +95,8 @@ describe("TmsClient", () => {
     expect(connect).toHaveBeenCalledTimes(1);
     expect(socket.writes).toHaveLength(1);
     expect(socket.destroyCalls).toBe(1);
+    expect(error).toMatchObject({ metadata: { writeAttempted: true } });
+    expect(error).toMatchObject({ metadata: { command: "LOAD_BOOK" } });
   });
 
   it("settles once for error followed by close and always destroys the socket", async () => {

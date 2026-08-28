@@ -1,4 +1,4 @@
-# HappyRobot LTMS Adapter — Phase 2A/2B
+# HappyRobot LTMS Adapter — Phase 2A/2B/2C
 
 This repository contains the first, minimal vertical slice of the carrier-sales TMS adapter:
 
@@ -6,7 +6,7 @@ This repository contains the first, minimal vertical slice of the carrier-sales 
 HTTP Route Handler → node:net → local LTMS mock
 ```
 
-Phase 1A–1D remains the local baseline. Phase 2A adds an explicitly opt-in validation track for the authorized candidate TMS using `DEBUG_ECHO`; Phase 2B adds separately guarded read-only probes for `LOAD_QUERY` and `LOAD_GET`. HappyRobot, FMCSA, real booking, persistence and deployment remain out of scope.
+Phase 1A–1D remains the local baseline. Phase 2A adds an explicitly opt-in validation track for the authorized candidate TMS using `DEBUG_ECHO`; Phase 2B adds separately guarded read-only probes for `LOAD_QUERY` and `LOAD_GET`; Phase 2C adds a locally verified, separately gated controlled-booking workflow whose real booking remains blocked pending final approval. HappyRobot/voice UI, FMCSA integration, persistence and deployment remain out of scope.
 
 ## Requirements
 
@@ -157,6 +157,18 @@ npm run test:real-tms:loads
 
 The query input must be approved runtime data, not a value invented for compatibility testing. A query with zero records is a valid result; without an observed or approved load ID, `LOAD_GET` is recorded as `precondition-not-met` and is not faked. Evidence is written separately to `reports/tms/phase-2b/real-read-only-loads.json` and contains only sanitized metadata such as operation, byte counts, record counts, field names, terminal and lifecycle. It excludes host, port, token, IDs, filter values, raw wire, PII, `NOTES` and `MAX_BUY`.
 
+## Controlled booking workflow (Phase 2C)
+
+The local Phase 2C workflow verifies the safe sequence `LOAD_QUERY` → explicit load selection → `LOAD_GET` → externally validated negotiation/carrier handoffs → one-shot `LOAD_BOOK`. It binds the exact selected load to the query/session, consumes the booking attempt before writing, never retries, and allows at most one reconciliation `LOAD_GET` after genuine post-write transport uncertainty. The local tests use the mock only.
+
+The real booking runner is intentionally isolated and must not be run as part of `npm test`, CI, or an HTTP request. It remains blocked until a separate immediate approval accepts the candidate non-production target, the typed runtime handoffs, the single-attempt budget and `rollbackAvailable=false`:
+
+```powershell
+npm run test:real-tms:booking
+```
+
+Do not execute that command without the required final approval. Real runtime inputs are server-only environment values; never put load IDs, MC numbers, rates, booking references or handoff payloads in source, reports or shared output. The authoritative implementation details and safety gates are in `specs/implementation/phase-2c-real-controlled-booking.spec.md`.
+
 ## Technical decisions
 
 - Route handlers explicitly use the Node.js runtime because TCP uses `node:net`.
@@ -196,4 +208,4 @@ Stop the mock with `Ctrl+C` and restart it to reset its isolated booking state.
 
 ## Current limitations
 
-The local mock supports `DEBUG_ECHO`, read-only `LOAD_QUERY`/`LOAD_GET`, stateful `LOAD_BOOK`, remote error codes and deterministic fault scenarios. Phase 2A validates real `DEBUG_ECHO`; Phase 2B validates real read-only loads through a separate runner. TLS, negotiation, real booking, FMCSA, HappyRobot, persistence and deployment remain out of scope.
+The local mock supports `DEBUG_ECHO`, read-only `LOAD_QUERY`/`LOAD_GET`, stateful `LOAD_BOOK`, remote error codes and deterministic fault scenarios. Phase 2A validates real `DEBUG_ECHO`; Phase 2B validates real read-only loads through a separate runner; Phase 2C is implemented and verified locally but real booking remains gated. TLS, negotiation engine, FMCSA integration, HappyRobot, persistence and deployment remain out of scope.

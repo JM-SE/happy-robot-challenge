@@ -1,6 +1,6 @@
 import net from "node:net";
 import { BookingStateError, bookLoadInState, createLoadBookingState, LOAD_DATASET, type LoadBookingState } from "./dataset";
-import { applyPreDispatchFault, resolveMockFault, writePostDispatchResponse, type MockFaultScenario, type MockTimer } from "./scenarios";
+import { applyPreDispatchFault, MOCK_FAULT_SCENARIOS, resolveMockFault, writePostDispatchResponse, type MockFaultScenario, type MockTimer } from "./scenarios";
 import { DEFAULT_TMS_FRAME_BYTES } from "../src/tms/limits";
 import type { LoadInternal } from "../src/tms/types";
 
@@ -33,7 +33,7 @@ function responseFrame(message: string, fieldCount: number): Buffer {
   return Buffer.from(`MSG:${message}|FIELD_COUNT:${fieldCount}\r\nEND\r\n`, "utf8");
 }
 
-function loadFrame(load: LoadInternal, reverseOrder: boolean): Buffer {
+function loadFrame(load: LoadInternal, reverseOrder: boolean, status?: LoadBookingState["status"]): Buffer {
   const fields = [
     ["LOAD_ID", load.loadId],
     ["ORIG_STATE", load.originState],
@@ -45,6 +45,7 @@ function loadFrame(load: LoadInternal, reverseOrder: boolean): Buffer {
     ["NOTES", load.notes],
     ["MAX_BUY", String(load.maxBuy)],
   ];
+  if (status === "BOOKED") fields.push(["STATUS", status]);
   if (reverseOrder) fields.reverse();
   return Buffer.from(`${fields.map(([name, value]) => `${name}:${value}`).join("|")}\r\n`, "utf8");
 }
@@ -92,8 +93,8 @@ function dispatchCommand(fields: Map<string, string>, bookingState: LoadBookingS
   }
   if (command === "LOAD_GET") {
     if (!fields.has("LOAD_ID")) return loadErrorFrame("MISSING_FIELD", "LOAD_ID is required");
-    const load = LOAD_DATASET.find((candidate) => candidate.loadId === fields.get("LOAD_ID"));
-    return load ? Buffer.concat([loadFrame(load, false), Buffer.from("END\r\n")]) : loadErrorFrame("UNKNOWN_LOAD", "Load was not found");
+    const bookedLoad = bookingState.find((candidate) => candidate.load.loadId === fields.get("LOAD_ID"));
+    return bookedLoad ? Buffer.concat([loadFrame(bookedLoad.load, false, bookedLoad.status), Buffer.from("END\r\n")]) : loadErrorFrame("UNKNOWN_LOAD", "Load was not found");
   }
   if (command === "LOAD_BOOK") {
     if (bookingServerError) return loadErrorFrame("SERVER_ERROR", "Booking service unavailable");
@@ -156,6 +157,7 @@ export function createMockLtmsServer(options: MockLtmsOptions = {}): MockLtmsSer
   const sockets = new Set<net.Socket>();
   const timers = new Set<MockTimer>();
   const fault = resolveMockFault(options);
+  let postWriteFaultConsumed = false;
 
   const schedule = (callback: () => void, delayMs: number): void => {
     const timer = setTimeout(() => {
@@ -212,7 +214,13 @@ export function createMockLtmsServer(options: MockLtmsOptions = {}): MockLtmsSer
 
       dispatchCount += 1;
       const response = dispatchCommand(fields, bookingState, options.bookingServerError ?? false);
-      if (!writePostDispatchResponse(socket, response, fault, schedule)) socket.end(response);
+      const isPostWriteBookingFault = fields.get("CMD") === "LOAD_BOOK"
+        && fault?.scenario === MOCK_FAULT_SCENARIOS.POST_WRITE_NO_RESPONSE;
+      const deliveryFault = fault?.scenario === MOCK_FAULT_SCENARIOS.POST_WRITE_NO_RESPONSE
+        ? isPostWriteBookingFault && !postWriteFaultConsumed ? fault : undefined
+        : fault;
+      if (isPostWriteBookingFault && deliveryFault) postWriteFaultConsumed = true;
+      if (!writePostDispatchResponse(socket, response, deliveryFault, schedule)) socket.end(response);
     });
     socket.on("close", () => sockets.delete(socket));
   };
