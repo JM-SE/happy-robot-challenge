@@ -18,4 +18,13 @@ describe("real load evidence sanitization", () => {
     expect(JSON.stringify(sanitized)).not.toContain("MAX_BUY");
     expect(JSON.stringify(sanitized)).not.toContain("NOTES");
   });
+
+  it("rejects arbitrary evidence properties", () => {
+    expect(() => sanitizeRealLoadEvidence({
+      operation: "LOAD_QUERY",
+      outcome: "success",
+      durationMs: 1,
+      extra: "secret",
+    } as never)).toThrow(/unknown fields/i);
+  });
 });

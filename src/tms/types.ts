@@ -1,3 +1,5 @@
+import type { ValidatedRealTarget } from "./target-authority";
+
 export type TmsFields = Record<string, string>;
 
 export const TMS_MODES = {
@@ -23,12 +25,20 @@ export interface TmsRecord {
   fields: TmsFields;
   /** Optional bare response marker, such as the real TMS `ECHO` marker. */
   recordType?: string;
-  /** Retained only for bounded internal diagnostics; never returned by HTTP. */
-  rawLine: string;
 }
 
 export interface TmsParsedResponse {
   records: TmsRecord[];
+  rawBytes: number;
+}
+
+/** Internal parser record; raw wire text must not cross service/HTTP boundaries. */
+export interface TmsInternalRecord extends TmsRecord {
+  rawLine: string;
+}
+
+export interface TmsInternalParsedResponse {
+  records: TmsInternalRecord[];
   rawBytes: number;
 }
 
@@ -40,6 +50,13 @@ export interface TmsConfig {
   connectTimeoutMs: number;
   responseTimeoutMs: number;
   maxFrameBytes: number;
+  /** Required for real mode; omitted for synthetic/mock configs. */
+  targetPin?: string;
+  /** Independent approved real target set; required for real booking. */
+  approvedTargets?: readonly string[];
+  /** Plain TCP is accepted only with an explicit private-network approval. */
+  transportApproval?: "private-network";
+  validatedTarget?: ValidatedRealTarget;
 }
 
 export interface EchoResult {

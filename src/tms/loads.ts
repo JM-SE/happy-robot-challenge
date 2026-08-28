@@ -1,4 +1,5 @@
 import { TmsUpstreamError, TmsValidationError } from "./errors";
+import { MAX_HTTP_TEXT_BYTES } from "./limits";
 import type { LoadDetailInput, LoadInternal, LoadPublic, LoadQueryInput, TmsRecord } from "./types";
 
 export const MAX_RESULTS_LIMIT = 50;
@@ -19,7 +20,7 @@ function trimAscii(value: string): string {
 
 function assertSafeText(value: string, name: string): string {
   const normalized = trimAscii(value);
-  if (!normalized || normalized.includes("|") || normalized.includes("\r") || normalized.includes("\n")) {
+  if (!normalized || normalized.length > MAX_HTTP_TEXT_BYTES || normalized.includes("|") || normalized.includes("\r") || normalized.includes("\n")) {
     throw new TmsValidationError(`${name} must be non-empty and contain no framing characters.`);
   }
   return normalized;

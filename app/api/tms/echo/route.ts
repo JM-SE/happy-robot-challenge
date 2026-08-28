@@ -3,16 +3,19 @@ import { getTmsConfig } from "../../../../src/tms/config";
 import { TmsClient } from "../../../../src/tms/client";
 import { TmsValidationError } from "../../../../src/tms/errors";
 import { responseToEchoResult } from "../../../../src/tms/echo";
-import { errorResponse, json } from "../../../../src/tms/http";
+import { errorResponse, json, readJsonBody } from "../../../../src/tms/http";
+import { MAX_HTTP_TEXT_BYTES } from "../../../../src/tms/limits";
+import { admitTmsRequest } from "../../../../src/tms/http-controls";
+import { MAX_TMS_DEADLINE_MS } from "../../../../src/tms/limits";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request): Promise<Response> {
   let body: unknown;
   try {
-    body = await request.json();
-  } catch {
-    return errorResponse(new TmsValidationError("Request body must be valid JSON."));
+    body = await readJsonBody(request);
+  } catch (error) {
+    return errorResponse(error);
   }
 
   if (
@@ -26,13 +29,15 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const message = (body as { message: string }).message;
-  if (!message.trim() || message.includes("|") || message.includes("\r") || message.includes("\n")) {
+  if (!message.trim() || new TextEncoder().encode(message).byteLength > MAX_HTTP_TEXT_BYTES || message.includes("|") || message.includes("\r") || message.includes("\n")) {
     return errorResponse(new TmsValidationError("Message must be non-empty and contain no framing characters."));
   }
 
   const requestId = request.headers.get("x-request-id")?.slice(0, 64) || randomUUID();
   try {
-    const client = new TmsClient(getTmsConfig());
+    const client = new TmsClient(getTmsConfig(), undefined, undefined, undefined, {
+      admissionFactory: () => admitTmsRequest({ deadlineMs: MAX_TMS_DEADLINE_MS, rateKey: "DEBUG_ECHO" }),
+    });
     const response = await client.execute({ command: "DEBUG_ECHO", fields: { MSG: message }, requestId });
     const data = responseToEchoResult(response);
     return json({ ok: true, data }, 200);

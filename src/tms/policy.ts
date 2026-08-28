@@ -14,9 +14,6 @@ export interface TmsCommandPolicy {
   scope: TmsExecutionScope;
 }
 
-const REAL_BOOKING_CAPABILITY = Symbol("real-booking-capability");
-export type RealBookingCapability = TmsCommandPolicy & { readonly [REAL_BOOKING_CAPABILITY]: true };
-
 export const REAL_TMS_ALLOWED_COMMAND = "DEBUG_ECHO";
 
 const COMMANDS_BY_SCOPE: Record<TmsExecutionScope, readonly string[]> = {
@@ -29,12 +26,6 @@ const COMMANDS_BY_SCOPE: Record<TmsExecutionScope, readonly string[]> = {
 export const REAL_2B_COMMAND_POLICY: TmsCommandPolicy = {
   scope: TMS_EXECUTION_SCOPES.REAL_2B_READ_ONLY,
 };
-
-export function createRealBookingCapability(config: TmsConfig, confirmed: boolean): RealBookingCapability {
-  assertRealTmsMode(config);
-  if (!confirmed) throw new TmsConfigurationError("Real booking requires explicit 2C confirmation.");
-  return { scope: TMS_EXECUTION_SCOPES.REAL_2C_CONTROLLED_BOOKING, [REAL_BOOKING_CAPABILITY]: true };
-}
 
 function defaultPolicy(config: TmsConfig): TmsCommandPolicy {
   return { scope: config.mode === TMS_MODES.REAL ? TMS_EXECUTION_SCOPES.REAL_2A_ECHO : TMS_EXECUTION_SCOPES.MOCK_LOCAL };
@@ -49,8 +40,8 @@ export function assertTmsCommandAllowed(config: TmsConfig, command: string, poli
     throw new TmsConfigurationError("Mock TMS command scope cannot target the real TMS.");
   }
   if (config.mode === TMS_MODES.MOCK && effectivePolicy.scope === TMS_EXECUTION_SCOPES.MOCK_LOCAL) return;
-  if (effectivePolicy.scope === TMS_EXECUTION_SCOPES.REAL_2C_CONTROLLED_BOOKING && !(REAL_BOOKING_CAPABILITY in effectivePolicy)) {
-    throw new TmsConfigurationError("Real booking requires the dedicated 2C capability.");
+  if (effectivePolicy.scope === TMS_EXECUTION_SCOPES.REAL_2C_CONTROLLED_BOOKING) {
+    throw new TmsConfigurationError("Real LOAD_BOOK remains disabled until Phase 3 authority is integrated.");
   }
   if (!COMMANDS_BY_SCOPE[effectivePolicy.scope].includes(command)) {
     throw new TmsConfigurationError(`The TMS execution scope does not permit ${command}.`);
@@ -60,5 +51,12 @@ export function assertTmsCommandAllowed(config: TmsConfig, command: string, poli
 export function assertRealTmsMode(config: TmsConfig): void {
   if (config.mode !== TMS_MODES.REAL) {
     throw new TmsConfigurationError("The real TMS runner requires explicit real non-production activation.");
+  }
+}
+
+export function assertRealBookingTarget(config: TmsConfig): void {
+  const target = `${config.host}:${config.port}`;
+  if (config.mode !== TMS_MODES.REAL || config.targetPin !== target || !config.approvedTargets?.includes(target) || config.transportApproval !== "private-network") {
+    throw new TmsConfigurationError("Real booking requires an approved candidate target and private-network transport approval.");
   }
 }

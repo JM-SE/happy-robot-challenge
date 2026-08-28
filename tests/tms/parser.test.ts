@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LtmsResponseParser, parseResponse } from "../../src/tms/parser";
+import { LtmsResponseParser, parseResponse, redactDiagnosticLine } from "../../src/tms/parser";
 import { TmsProtocolError, TmsRemoteError, TmsResponseIncompleteError } from "../../src/tms/errors";
 import { oneByteChunks } from "./test-helpers";
 
@@ -9,7 +9,7 @@ describe("LtmsResponseParser", () => {
     expect(parser.push(Buffer.from("MSG:hel"))).toBeUndefined();
     expect(parser.push(Buffer.from("lo|FIELD_COUNT:3\r\nEN"))).toBeUndefined();
     expect(parser.push(Buffer.from("D\r\n"))).toEqual({
-      records: [{ fields: { MSG: "hello", FIELD_COUNT: "3" }, rawLine: "MSG:hello|FIELD_COUNT:3" }],
+      records: [{ fields: { MSG: "hello", FIELD_COUNT: "3" } }],
       rawBytes: 30,
     });
   });
@@ -36,8 +36,7 @@ describe("LtmsResponseParser", () => {
   });
 
   it("redacts sensitive fields and keeps raw diagnostics bounded in UTF-8 bytes", () => {
-    const response = parseResponse(`TOKEN:secret-token|MAX_BUY:2300|NOTES:internal|MSG:${"😀".repeat(200)}\r\nEND\r\n`);
-    const rawLine = response.records[0]?.rawLine ?? "";
+    const rawLine = redactDiagnosticLine(`TOKEN:secret-token|MAX_BUY:2300|NOTES:internal|MSG:${"😀".repeat(200)}`);
     expect(rawLine).toContain("TOKEN:[REDACTED]");
     expect(rawLine).toContain("MAX_BUY:[REDACTED]");
     expect(rawLine).toContain("NOTES:[REDACTED]");
@@ -59,8 +58,8 @@ describe("LtmsResponseParser", () => {
     for (const chunk of oneByteChunks(response)) result = parser.push(chunk) ?? result;
     expect(result).toEqual({
       records: [
-        { fields: { A: "one", B: "two" }, rawLine: "A:one|B:two" },
-        { fields: { C: "three" }, rawLine: "C:three" },
+         { fields: { A: "one", B: "two" } },
+         { fields: { C: "three" } },
       ],
       rawBytes: Buffer.byteLength(response),
     });
@@ -120,7 +119,6 @@ describe("LtmsResponseParser", () => {
     expect(response.records).toEqual([{
       recordType: "ECHO",
       fields: { AUTH: "OK", FIELDS_PARSED: "3", MSG: "HELLO" },
-      rawLine: "ECHO|AUTH:[REDACTED]|FIELDS_PARSED:3|MSG:HELLO",
     }]);
   });
 

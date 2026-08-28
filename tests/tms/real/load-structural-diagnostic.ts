@@ -1,7 +1,3 @@
-import { getTmsConfig } from "../../../src/tms/config-core";
-import { buildRequest } from "../../../src/tms/protocol";
-import { connectTcp } from "../../../src/tms/transport";
-import { fileURLToPath } from "node:url";
 
 const FIELD_NAME = /^[A-Z][A-Z0-9_]*$/;
 const SENSITIVE_FIELD_NAMES = new Set([
@@ -154,54 +150,4 @@ export function diagnoseLoadGetResponse(response: Buffer): LoadStructuralDiagnos
     totalLineCount: lines.length,
     lines,
   };
-}
-
-async function runOneRealLoadGet(): Promise<void> {
-  const config = getTmsConfig();
-  const loadId = process.env.TMS_REAL_LOAD_ID;
-  if (config.mode !== "real" || !loadId) throw new Error("Real mode and an approved load id are required.");
-
-  const request = buildRequest({
-    command: "LOAD_GET",
-    authToken: config.authToken,
-    fields: { LOAD_ID: loadId },
-  }, config.maxFrameBytes);
-  const socket = connectTcp({ host: config.host, port: config.port });
-  const chunks: Buffer[] = [];
-  let connected = false;
-  let settled = false;
-  let timer: ReturnType<typeof setTimeout>;
-
-  const finish = (outcome: string, errorCategory?: string) => {
-    if (settled) return;
-    settled = true;
-    clearTimeout(timer);
-    console.log(JSON.stringify({
-      outcome,
-      ...(errorCategory ? { errorCategory } : {}),
-      ...diagnoseLoadGetResponse(Buffer.concat(chunks)),
-    }, null, 2));
-    socket.destroy();
-  };
-
-  socket.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))));
-  socket.once("connect", () => {
-    connected = true;
-    clearTimeout(timer);
-    timer = setTimeout(() => finish("incomplete", "RESPONSE_TIMEOUT"), config.responseTimeoutMs);
-    socket.write(request, (error) => {
-      if (error) finish("transport-error", "WRITE_ERROR");
-    });
-  });
-  socket.once("error", () => finish("transport-error", connected ? "SOCKET_ERROR" : "CONNECT_ERROR"));
-  socket.once("end", () => finish("captured", "PEER_END"));
-  socket.once("close", () => finish("captured", "PEER_CLOSE"));
-  timer = setTimeout(() => finish("incomplete", "CONNECT_TIMEOUT"), config.connectTimeoutMs);
-}
-
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  runOneRealLoadGet().catch(() => {
-    console.log(JSON.stringify({ outcome: "not-run", errorCategory: "CONFIGURATION_OR_SETUP_ERROR" }, null, 2));
-    process.exitCode = 1;
-  });
 }

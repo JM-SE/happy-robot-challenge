@@ -1,9 +1,12 @@
 import { randomUUID } from "node:crypto";
+import { InMemoryBookingAttemptLedger, type BookingAttemptLedger } from "./attempt-ledger";
 import { recordToBookingPublic, toBookLoadFields } from "./booking";
 import { isTmsAdapterError, TmsConfigurationError, TmsUpstreamError, TmsValidationError } from "./errors";
 import { parseLoadQueryInput, recordToPublicLoad, toLoadDetailFields, toLoadQueryFields } from "./loads";
-import type { RealBookingCapability } from "./policy";
+import type { TmsCommandPolicy } from "./policy";
+import { noReconciliationAuthority, type AuthoritativeReconciliationClassifier, type ReconciliationOutcome as AuthoritativeReconciliationOutcome } from "./real/reconciliation";
 import { buildRequest } from "./protocol";
+import { DEADLINE_PHASES, DeadlineBudget } from "./deadline";
 import type { BookLoadInput, LoadPublic, LoadQueryInput, TmsCommandRequest, TmsConfig, TmsParsedResponse } from "./types";
 
 export const CONTROLLED_BOOKING_TTL_MS = 30_000;
@@ -11,11 +14,12 @@ export const MAX_COUNTEROFFERS = 3;
 export const FMCSA_VALIDATION_MAX_AGE_MS = 5 * 60_000;
 
 export type ControlledBookingState = "ready" | "queried" | "selected" | "detailed" | "handoffs-validated" | "booking-consumed" | "uncertain" | "terminal";
-export type ReconciliationOutcome = "reconciled" | "still-uncertain";
+export type ReconciliationOutcome = AuthoritativeReconciliationOutcome;
 
 export interface LoadOperationResult {
   response: TmsParsedResponse;
   requestBytes: number;
+  durationMs: number;
 }
 
 export interface QueryRun {
@@ -50,6 +54,7 @@ export interface NegotiationHandoff {
   readonly agreedRate: number;
   readonly finalAccepted: true;
   readonly counterofferCount: number;
+  readonly [TEST_HANDOFF]: true;
 }
 
 export interface CarrierValidationHandoffInput {
@@ -70,8 +75,10 @@ export interface CarrierValidationHandoff {
   readonly validated: true;
   readonly validatedAt: number;
   readonly validationReference?: string;
+  readonly [TEST_HANDOFF]: true;
 }
 
+const TEST_HANDOFF = Symbol("test-only-booking-handoff");
 export interface BookingAuthorizationContext {
   readonly selection: SelectedLoad;
   readonly detail: LoadPublic;
@@ -85,15 +92,19 @@ export interface ControlledBookingOperationResult {
   readonly result: LoadOperationResult;
 }
 
+const AUTHORIZATION_CREATION_TOKEN = Symbol("controlled-booking-authorization");
+const AUTHORIZATION_INSTANCES = new WeakSet<object>();
+
 export interface ControlledBookingPort {
   execute(request: TmsCommandRequest): Promise<TmsParsedResponse>;
+  executeBooking?(authorization: ControlledBookingAuthorization): Promise<TmsParsedResponse>;
 }
 
 export function isPostWriteBookingUncertain(error: unknown): boolean {
   return isTmsAdapterError(error)
     && error.metadata.command === "LOAD_BOOK"
-    && error.metadata.writeAttempted === true
-    && error.stage !== "write"
+    && error.metadata.writeDisposition !== undefined
+    && error.metadata.writeDisposition !== "not-sent"
     && ["TMS_TIMEOUT", "TMS_RESPONSE_INCOMPLETE", "TMS_CONNECTION", "TMS_PROTOCOL"].includes(error.type);
 }
 
@@ -122,6 +133,10 @@ function assertSameIdentity(expected: string, actual: string, label: string): vo
   if (expected !== actual) throw new TmsValidationError(`${label} does not match the selected load.`);
 }
 
+function assertSameRate(expected: number, actual: number, label: string): void {
+  if (expected !== actual) throw new TmsUpstreamError(`${label} does not match the authorized booking.`);
+}
+
 function assertMaterialDetail(selection: SelectedLoad, detail: LoadPublic): void {
   const fields: Array<keyof LoadPublic> = [
     "loadId", "originState", "destinationState", "originCity", "destinationCity", "equipmentType", "rate",
@@ -142,7 +157,7 @@ export function createNegotiationHandoff(input: NegotiationHandoffInput): Negoti
   if (!Number.isInteger(input.counterofferCount) || input.counterofferCount < 0 || input.counterofferCount > MAX_COUNTEROFFERS) {
     throw new TmsValidationError(`Negotiation allows no more than ${MAX_COUNTEROFFERS} counteroffers.`);
   }
-  return { loadId, runId, sessionId, agreedRate: normalizeAgreedRate(input.agreedRate), finalAccepted: true, counterofferCount: input.counterofferCount };
+  return { loadId, runId, sessionId, agreedRate: normalizeAgreedRate(input.agreedRate), finalAccepted: true, counterofferCount: input.counterofferCount, [TEST_HANDOFF]: true };
 }
 
 export function createCarrierValidationHandoff(input: CarrierValidationHandoffInput, now = Date.now()): CarrierValidationHandoff {
@@ -155,7 +170,7 @@ export function createCarrierValidationHandoff(input: CarrierValidationHandoffIn
     throw new TmsValidationError("FMCSA validation proof is stale or invalid.");
   }
   const validationReference = input.validationReference === undefined ? undefined : safeBinding(input.validationReference, "carrier.validationReference");
-  return { loadId, runId, sessionId, mcNumber, validated: true, validatedAt: input.validatedAt, ...(validationReference ? { validationReference } : {}) };
+  return { loadId, runId, sessionId, mcNumber, validated: true, validatedAt: input.validatedAt, ...(validationReference ? { validationReference } : {}), [TEST_HANDOFF]: true };
 }
 
 export function selectLoad(queryRun: QueryRun, selectedLoadId: string, explicitSelectionConfirmed: boolean, now = Date.now()): SelectedLoad {
@@ -180,18 +195,39 @@ export function filterReturnedLoadsByPickupDate(loads: readonly LoadPublic[], pr
 
 export class ControlledBookingAuthorization {
   private bookingConsumed = false;
+  private bookingClaimInFlight = false;
   private bookingUncertain = false;
   private reconciliationConsumed = false;
 
   constructor(
     readonly context: BookingAuthorizationContext,
-    readonly policy: RealBookingCapability,
-  ) {}
+    readonly policy: TmsCommandPolicy,
+    private readonly ledger: BookingAttemptLedger,
+    token: typeof AUTHORIZATION_CREATION_TOKEN,
+  ) {
+    if (token !== AUTHORIZATION_CREATION_TOKEN) throw new TmsConfigurationError("Controlled booking authorization must be issued by the workflow.");
+    AUTHORIZATION_INSTANCES.add(this);
+  }
 
-  consumeBooking(now = Date.now()): void {
+  static isIssued(value: unknown): value is ControlledBookingAuthorization {
+    return typeof value === "object" && value !== null && AUTHORIZATION_INSTANCES.has(value);
+  }
+
+  async consumeBooking(now = Date.now()): Promise<string> {
     assertFresh(this.context.expiresAt, now);
-    if (this.bookingConsumed) throw new TmsConfigurationError("The controlled booking attempt has already been consumed.");
-    this.bookingConsumed = true;
+    if (this.bookingConsumed || this.bookingClaimInFlight) throw new TmsConfigurationError("The controlled booking attempt has already been consumed.");
+    this.bookingClaimInFlight = true;
+    try {
+      const claimToken = await this.ledger.consumeOnce({
+        loadId: this.context.selection.selectedLoadId,
+        runId: this.context.selection.queryRun.runId,
+        sessionId: this.context.selection.queryRun.sessionId,
+      });
+      this.bookingConsumed = true;
+      return claimToken;
+    } finally {
+      this.bookingClaimInFlight = false;
+    }
   }
 
   consumeReconciliation(): void {
@@ -229,10 +265,16 @@ export class ControlledBookingWorkflow {
   constructor(
     private readonly config: TmsConfig,
     private readonly port: ControlledBookingPort,
-    private readonly policy: RealBookingCapability,
+    private readonly policy: TmsCommandPolicy,
     private readonly now: () => number = () => Date.now(),
     private readonly ttlMs = CONTROLLED_BOOKING_TTL_MS,
-  ) {}
+    private readonly ledger: BookingAttemptLedger,
+    private readonly budget?: DeadlineBudget,
+  ) {
+    if (!ledger || (config.mode === "real" && (ledger instanceof InMemoryBookingAttemptLedger || typeof ledger.transition !== "function"))) {
+      throw new TmsConfigurationError("A durable booking attempt ledger is required for this workflow.");
+    }
+  }
 
   get currentState(): ControlledBookingState {
     return this.state;
@@ -242,15 +284,16 @@ export class ControlledBookingWorkflow {
     if (this.state !== "ready") throw new TmsConfigurationError("The controlled booking workflow can query only once.");
     const approvedQuery = parseLoadQueryInput(input);
     const startedAt = this.now();
-    const fields = toLoadQueryFields(approvedQuery);
-    const response = await this.port.execute({ command: "LOAD_QUERY", fields, requestId: "phase-2c-query" });
-    const candidates = response.records.map(recordToPublicLoad);
+    const fields = await this.runBudget(DEADLINE_PHASES.MAPPING, () => toLoadQueryFields(approvedQuery));
+    const response = await this.execute({ command: "LOAD_QUERY", fields, requestId: "phase-2c-query" }, DEADLINE_PHASES.MAPPING);
+    const candidates = await this.runBudget(DEADLINE_PHASES.MAPPING, () => response.records.map(recordToPublicLoad));
     if (new Set(candidates.map((candidate) => candidate.loadId)).size !== candidates.length) {
       throw new TmsUpstreamError("The query returned duplicate load identities.");
     }
-    this.queryRun = { runId: safeBinding(runId, "runId"), sessionId: safeBinding(sessionId, "sessionId"), query: approvedQuery, candidates, queriedAt: startedAt, expiresAt: startedAt + this.ttlMs };
+    const queryRun: QueryRun = { runId: safeBinding(runId, "runId"), sessionId: safeBinding(sessionId, "sessionId"), query: approvedQuery, candidates, queriedAt: startedAt, expiresAt: startedAt + this.ttlMs };
+    await this.runBudget(DEADLINE_PHASES.MAPPING, () => { this.queryRun = queryRun; });
     this.state = "queried";
-    return { run: this.queryRun, operation: { operation: "LOAD_QUERY", result: { response, requestBytes: requestBytes(this.config, "LOAD_QUERY", fields) } } };
+    return { run: queryRun, operation: { operation: "LOAD_QUERY", result: { response, requestBytes: requestBytes(this.config, "LOAD_QUERY", fields), durationMs: Math.max(0, this.now() - startedAt) } } };
   }
 
   select(selectedLoadId: string, explicitSelectionConfirmed: boolean): SelectedLoad {
@@ -263,22 +306,26 @@ export class ControlledBookingWorkflow {
   async detail(): Promise<{ load: LoadPublic; operation: ControlledBookingOperationResult }> {
     if (this.state !== "selected" || !this.selection) throw new TmsConfigurationError("Load detail requires explicit selection.");
     assertFresh(this.selection.queryRun.expiresAt, this.now());
-    const fields = toLoadDetailFields({ loadId: this.selection.selectedLoadId });
-    const response = await this.port.execute({ command: "LOAD_GET", fields, requestId: "phase-2c-detail" });
+    const startedAt = this.now();
+    const fields = await this.runBudget(DEADLINE_PHASES.MAPPING, () => toLoadDetailFields({ loadId: this.selection!.selectedLoadId }));
+    const response = await this.execute({ command: "LOAD_GET", fields, requestId: "phase-2c-detail" }, DEADLINE_PHASES.MAPPING);
     if (response.records.length !== 1) throw new TmsUpstreamError("Selected load detail must contain exactly one record.");
-    const load = recordToPublicLoad(response.records[0]!);
+    const load = await this.runBudget(DEADLINE_PHASES.MAPPING, () => recordToPublicLoad(response.records[0]!));
     assertSameIdentity(this.selection.selectedLoadId, load.loadId, "Detail load ID");
     assertMaterialDetail(this.selection, load);
-    this.detailedLoad = load;
-    this.state = "detailed";
-    return { load, operation: { operation: "LOAD_GET", result: { response, requestBytes: requestBytes(this.config, "LOAD_GET", fields) } } };
+    await this.runBudget(DEADLINE_PHASES.MAPPING, () => {
+      this.detailedLoad = load;
+      this.state = "detailed";
+    });
+    return { load, operation: { operation: "LOAD_GET", result: { response, requestBytes: requestBytes(this.config, "LOAD_GET", fields), durationMs: Math.max(0, this.now() - startedAt) } } };
   }
 
-  authorize(
+  private issueAuthorization(
     negotiation: NegotiationHandoff,
     carrier: CarrierValidationHandoff,
     bookingConfirmed: boolean,
   ): ControlledBookingAuthorization {
+    if (negotiation[TEST_HANDOFF] !== true || carrier[TEST_HANDOFF] !== true) throw new TmsConfigurationError("Booking requires verified handoff results.");
     if (this.state !== "detailed" || !this.selection || !this.detailedLoad || !this.queryRun) throw new TmsConfigurationError("Booking handoffs require a completed selected-load detail.");
     assertFresh(this.queryRun.expiresAt, this.now());
     for (const handoff of [negotiation, carrier]) {
@@ -290,61 +337,111 @@ export class ControlledBookingWorkflow {
       throw new TmsValidationError("FMCSA validation proof is stale.");
     }
     if (bookingConfirmed !== true) throw new TmsConfigurationError("Real booking requires explicit 2C confirmation.");
-    this.authorization = new ControlledBookingAuthorization({ selection: this.selection, detail: this.detailedLoad, negotiation, carrier, expiresAt: this.queryRun.expiresAt }, this.policy);
+    this.authorization = new ControlledBookingAuthorization({ selection: this.selection, detail: this.detailedLoad, negotiation, carrier, expiresAt: this.queryRun.expiresAt }, this.policy, this.ledger, AUTHORIZATION_CREATION_TOKEN);
     this.state = "handoffs-validated";
     return this.authorization;
   }
 
+  /** Local fixture seam only; it cannot be used to authorize real booking. */
+  authorizeTestOnly(negotiation: NegotiationHandoff, carrier: CarrierValidationHandoff, bookingConfirmed: boolean): ControlledBookingAuthorization {
+    if (this.config.mode === "real") throw new TmsConfigurationError("Test-only handoffs cannot authorize real booking.");
+    return this.issueAuthorization(negotiation, carrier, bookingConfirmed);
+  }
+
+  /** Compatibility name for local fixtures; production callers use authorizeVerified. */
+  authorize(negotiation: NegotiationHandoff, carrier: CarrierValidationHandoff, bookingConfirmed: boolean): ControlledBookingAuthorization {
+    return this.authorizeTestOnly(negotiation, carrier, bookingConfirmed);
+  }
+
+
   async book(authorization = this.authorization): Promise<{ booking: ReturnType<typeof recordToBookingPublic>; operation: ControlledBookingOperationResult }> {
     if (!authorization || !this.selection) throw new TmsConfigurationError("Booking requires validated handoffs.");
+    if (!ControlledBookingAuthorization.isIssued(authorization)) throw new TmsConfigurationError("Booking authorization was not issued by the workflow.");
     if (authorization !== this.authorization) throw new TmsConfigurationError("Booking authorization does not belong to this workflow.");
     if (authorization.bookingAttemptConsumed) throw new TmsConfigurationError("The controlled booking attempt has already been consumed.");
     if (this.state !== "handoffs-validated") throw new TmsConfigurationError("Booking requires validated handoffs.");
-    authorization.consumeBooking(this.now());
+    if (this.config.mode === "real" && !this.port.executeBooking) {
+      throw new TmsConfigurationError("Real booking requires the dedicated controlled booking port.");
+    }
+    const claimToken = await this.runBudget(DEADLINE_PHASES.WRITE, () => authorization.consumeBooking(this.now()));
     this.state = "booking-consumed";
     const input: BookLoadInput = { loadId: authorization.context.selection.selectedLoadId, mcNumber: authorization.context.carrier.mcNumber, agreedRate: authorization.context.negotiation.agreedRate };
-    const fields = toBookLoadFields(input);
+    const fields = await this.runBudget(DEADLINE_PHASES.MAPPING, () => toBookLoadFields(input));
+    let responseReceived = false;
+    const startedAt = this.now();
     try {
-      const response = await this.port.execute({ command: "LOAD_BOOK", fields, requestId: "phase-2c-booking" });
+      const response = await this.executeBooking(authorization);
+      responseReceived = true;
+      this.budget?.checkpoint();
       if (response.records.length !== 1) throw new TmsUpstreamError("Booking response must contain exactly one record.");
-      const booking = recordToBookingPublic(response.records[0]!);
+      const booking = await this.runBudget(DEADLINE_PHASES.MAPPING, () => recordToBookingPublic(response.records[0]!));
       assertSameIdentity(authorization.context.selection.selectedLoadId, booking.loadId, "Booking load ID");
-      this.state = "terminal";
-      return { booking, operation: { operation: "LOAD_BOOK", result: { response, requestBytes: requestBytes(this.config, "LOAD_BOOK", fields) } } };
+      assertSameIdentity(authorization.context.carrier.mcNumber, booking.mcNumber, "Booking MC number");
+      assertSameRate(authorization.context.negotiation.agreedRate, booking.agreedRate, "Booking agreed rate");
+      await this.runBudget(DEADLINE_PHASES.MAPPING, () => { this.state = "terminal"; });
+      await this.transitionLedger(authorization, claimToken, "sent");
+       return { booking, operation: { operation: "LOAD_BOOK", result: { response, requestBytes: requestBytes(this.config, "LOAD_BOOK", fields), durationMs: Math.max(0, this.now() - startedAt) } } };
     } catch (error) {
-      if (isPostWriteBookingUncertain(error)) {
+      if (responseReceived || isPostWriteBookingUncertain(error)) {
         authorization.markBookingUncertain();
-        this.state = "uncertain";
+        await this.runBudget(DEADLINE_PHASES.RECONCILIATION, () => { this.state = "uncertain"; });
+        await this.transitionLedger(authorization, claimToken, "unknown");
       } else {
-        this.state = "terminal";
+        await this.runBudget(DEADLINE_PHASES.MAPPING, () => { this.state = "terminal"; });
       }
       throw error;
     }
   }
 
+  private async execute(request: TmsCommandRequest, phase: typeof DEADLINE_PHASES[keyof typeof DEADLINE_PHASES]): Promise<TmsParsedResponse> {
+    return this.budget ? this.budget.runPhase(phase, () => this.port.execute(request)) : this.port.execute(request);
+  }
+
+  private async executeBooking(authorization: ControlledBookingAuthorization): Promise<TmsParsedResponse> {
+    if (this.port.executeBooking) return this.budget
+      ? this.budget.runPhase(DEADLINE_PHASES.WRITE, () => this.port.executeBooking!(authorization))
+      : this.port.executeBooking(authorization);
+    return this.execute({ command: "LOAD_BOOK", fields: toBookLoadFields({ loadId: authorization.context.selection.selectedLoadId, mcNumber: authorization.context.carrier.mcNumber, agreedRate: authorization.context.negotiation.agreedRate }), requestId: "phase-2c-booking" }, DEADLINE_PHASES.WRITE);
+  }
+
+  private async transitionLedger(authorization: ControlledBookingAuthorization, claimToken: string, state: "sent" | "unknown"): Promise<void> {
+    await this.runBudget(DEADLINE_PHASES.MAPPING, () => this.ledger.transition(
+      { loadId: authorization.context.selection.selectedLoadId, runId: authorization.context.selection.queryRun.runId, sessionId: authorization.context.selection.queryRun.sessionId },
+      claimToken,
+      state,
+    ));
+  }
+
   async reconcile(
     authorization = this.authorization,
-    confirmsBookingState: (load: LoadPublic) => boolean = () => false,
+    classifier: AuthoritativeReconciliationClassifier | ((load: LoadPublic) => boolean) = noReconciliationAuthority,
   ): Promise<{ load: LoadPublic; outcome: ReconciliationOutcome; operation: ControlledBookingOperationResult }> {
     if (!authorization || authorization !== this.authorization) throw new TmsConfigurationError("Reconciliation authorization does not belong to this workflow.");
     if (this.state !== "uncertain") throw new TmsConfigurationError("Reconciliation requires genuine post-write booking uncertainty.");
+    if (typeof classifier === "function") throw new TmsConfigurationError("Reconciliation requires an authoritative classifier.");
     authorization.consumeReconciliation();
+    const startedAt = this.now();
     const fields = toLoadDetailFields({ loadId: authorization.context.selection.selectedLoadId });
     try {
-      const response = await this.port.execute({ command: "LOAD_GET", fields, requestId: "phase-2c-reconciliation" });
+      const response = await this.execute({ command: "LOAD_GET", fields, requestId: "phase-2c-reconciliation" }, DEADLINE_PHASES.RECONCILIATION);
       if (response.records.length !== 1) throw new TmsUpstreamError("Reconciliation detail must contain exactly one record.");
-      const load = recordToPublicLoad(response.records[0]!);
+      const load = await this.runBudget(DEADLINE_PHASES.RECONCILIATION, () => recordToPublicLoad(response.records[0]!));
       assertSameIdentity(authorization.context.selection.selectedLoadId, load.loadId, "Reconciliation load ID");
-      this.state = "terminal";
+       await this.runBudget(DEADLINE_PHASES.RECONCILIATION, () => { this.state = "terminal"; });
       return {
         load,
-        outcome: confirmsBookingState(load) ? "reconciled" : "still-uncertain",
-        operation: { operation: "LOAD_GET", result: { response, requestBytes: requestBytes(this.config, "LOAD_GET", fields) } },
+          outcome: await this.runBudget(DEADLINE_PHASES.RECONCILIATION, () => classifier.classify(load)),
+         operation: { operation: "LOAD_GET", result: { response, requestBytes: requestBytes(this.config, "LOAD_GET", fields), durationMs: Math.max(0, this.now() - startedAt) } },
       };
     } catch (error) {
       this.state = "terminal";
       throw error;
     }
+  }
+
+  private async runBudget<T>(phase: typeof DEADLINE_PHASES[keyof typeof DEADLINE_PHASES], operation: () => T | Promise<T>): Promise<T> {
+    if (!this.budget) return operation();
+    return this.budget.runPhase(phase, async () => operation());
   }
 }
 

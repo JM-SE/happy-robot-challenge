@@ -1,24 +1,25 @@
-import { getTmsConfig } from "../../../../../src/tms/config";
-import { TmsClient } from "../../../../../src/tms/client";
-import { bookLoad } from "../../../../../src/tms/service";
-import { invalidJsonResponse, errorResponse, json } from "../../../../../src/tms/http";
-import { parseBookLoadInput } from "../../../../../src/tms/booking";
+import { errorResponse, readJsonBody } from "../../../../../src/tms/http";
+import { assertBookingCallerAuthorized } from "../../../../../src/tms/caller-authorization";
+import { TmsCallerAuthorizationError } from "../../../../../src/tms/errors";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request): Promise<Response> {
   let body: unknown;
   try {
-    body = await request.json();
-  } catch {
-    return invalidJsonResponse();
-  }
-
-  try {
-    const input = parseBookLoadInput(body);
-    const result = await bookLoad(input, new TmsClient(getTmsConfig()));
-    return json({ ok: true, data: { booking: result } }, 200);
+    body = await readJsonBody(request);
   } catch (error) {
     return errorResponse(error);
   }
+
+  try {
+    assertBookingCallerAuthorized();
+  } catch (error) {
+    return errorResponse(error);
+  }
+
+  // The public mutation surface is intentionally deny-by-default. Controlled
+  // booking remains a direct test seam until Phase 3 authority is integrated.
+  void body;
+  return errorResponse(new TmsCallerAuthorizationError());
 }

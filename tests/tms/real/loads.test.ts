@@ -6,6 +6,8 @@ import { isTmsAdapterError, type TmsAdapterError } from "../../../src/tms/errors
 import type { LoadQueryInput, TmsConfig } from "../../../src/tms/types";
 import { runRealLoadDetail, runRealLoadQuery, type RealLoadOperationResult } from "./load-probe";
 import { writeSanitizedRealLoadEvidence, type SanitizedRealLoadProbeEvidence } from "./load-evidence";
+import { DeadlineBudget } from "../../../src/tms/deadline";
+import { MAX_TMS_DEADLINE_MS } from "../../../src/tms/limits";
 
 function readQueryInput(): LoadQueryInput {
   const raw = process.env.TMS_REAL_LOAD_QUERY_JSON;
@@ -35,22 +37,25 @@ function evidenceFor(operation: "LOAD_QUERY" | "LOAD_GET", result: RealLoadOpera
 describe("authorized real TMS read-only loads", () => {
   let config!: TmsConfig;
   let queryInput!: LoadQueryInput;
+  let deadline!: DeadlineBudget;
   const evidence: SanitizedRealLoadProbeEvidence[] = [];
 
   beforeAll(() => {
     config = getTmsConfig();
     assertRealTmsMode(config);
     queryInput = readQueryInput();
+    deadline = new DeadlineBudget(Math.min(MAX_TMS_DEADLINE_MS, config.connectTimeoutMs + config.responseTimeoutMs));
   });
 
   afterAll(async () => {
     if (evidence.length > 0) await writeSanitizedRealLoadEvidence(evidence);
+    deadline.dispose();
   });
 
   it("executes an authorized read-only LOAD_QUERY", async () => {
     const startedAt = Date.now();
     try {
-      const result = await runRealLoadQuery(config, queryInput, "phase-2b-query");
+      const result = await runRealLoadQuery(config, queryInput, "phase-2b-query", deadline);
       evidence.push(evidenceFor("LOAD_QUERY", result, startedAt));
       expect(result.loads.length).toBe(result.response.records.length);
       expect(result.loads.every((load) => !Object.prototype.hasOwnProperty.call(load, "maxBuy"))).toBe(true);
@@ -61,19 +66,19 @@ describe("authorized real TMS read-only loads", () => {
   });
 
   it("executes LOAD_GET only when an approved load id is available", async () => {
-    const queryResult = await runRealLoadQuery(config, queryInput, "phase-2b-query-for-detail");
-    const configuredId = process.env.TMS_REAL_LOAD_ID;
-    const loadId = configuredId ?? queryResult.loads[0]?.loadId;
-    if (!loadId) {
-      evidence.push({ operation: "LOAD_GET", outcome: "precondition-not-met", durationMs: 0, lifecycle: "not-run", reason: "no-load-id-observed" });
-      expect(queryResult.loads).toHaveLength(0);
-      return;
-    }
-
-    const detailInput = parseLoadDetailInput({ loadId });
     const startedAt = Date.now();
     try {
-      const result = await runRealLoadDetail(config, detailInput, "phase-2b-detail");
+      const queryResult = await runRealLoadQuery(config, queryInput, "phase-2b-query-for-detail", deadline);
+      const configuredId = process.env.TMS_REAL_LOAD_ID;
+      const loadId = configuredId ?? queryResult.loads[0]?.loadId;
+      if (!loadId) {
+        evidence.push({ operation: "LOAD_GET", outcome: "precondition-not-met", durationMs: 0, lifecycle: "not-run", reason: "no-load-id-observed" });
+        expect(queryResult.loads).toHaveLength(0);
+        return;
+      }
+
+      const detailInput = parseLoadDetailInput({ loadId });
+      const result = await runRealLoadDetail(config, detailInput, "phase-2b-detail", deadline);
       evidence.push(evidenceFor("LOAD_GET", result, startedAt));
       expect(result.loads).toHaveLength(1);
       expect(Object.prototype.hasOwnProperty.call(result.loads[0], "maxBuy")).toBe(false);

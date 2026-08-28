@@ -1,6 +1,6 @@
 import { TmsProtocolError, TmsRemoteError, TmsResponseIncompleteError } from "./errors";
-import { DEFAULT_TMS_FRAME_BYTES, MAX_TMS_RAW_LINE_BYTES } from "./limits";
-import type { TmsFields, TmsParsedResponse, TmsRecord } from "./types";
+import { DEFAULT_TMS_FRAME_BYTES, MAX_TMS_RAW_LINE_BYTES, MAX_TMS_RESPONSE_RECORDS } from "./limits";
+import type { TmsFields, TmsInternalParsedResponse, TmsInternalRecord, TmsParsedResponse } from "./types";
 
 const IDENTIFIER = /^[A-Z][A-Z0-9_]*$/;
 const CR = 13;
@@ -18,7 +18,7 @@ function decode(bytes: Buffer): string {
   }
 }
 
-function safeRawLine(line: string): string {
+export function redactDiagnosticLine(line: string): string {
   const redacted = line.split("|").map((segment) => {
     const separator = segment.indexOf(":");
     if (separator <= 0) return segment;
@@ -52,7 +52,7 @@ function parseFields(line: string, allowResponseAuth = false): TmsFields {
   return fields;
 }
 
-function parseRecord(line: string): TmsRecord {
+function parseRecord(line: string): TmsInternalRecord {
   const segments = line.split("|");
   const hasBareMarker = !segments[0]?.includes(":");
   if (hasBareMarker && segments[0] !== "ECHO") throw new TmsProtocolError("Response contains an unknown record marker.");
@@ -60,15 +60,15 @@ function parseRecord(line: string): TmsRecord {
   const recordType = hasBareMarker ? segments.shift() : undefined;
   const fields = parseFields(segments.join("|"), recordType === "ECHO");
   return recordType
-    ? { fields, recordType, rawLine: safeRawLine(line) }
-    : { fields, rawLine: safeRawLine(line) };
+     ? { fields, recordType, rawLine: redactDiagnosticLine(line) }
+     : { fields, rawLine: redactDiagnosticLine(line) };
 }
 
 export class LtmsResponseParser {
   private pending = Buffer.alloc(0);
-  private records: TmsRecord[] = [];
+  private records: TmsInternalRecord[] = [];
   private totalBytes = 0;
-  private result: TmsParsedResponse | undefined;
+  private result: TmsInternalParsedResponse | undefined;
 
   constructor(private readonly maxFrameBytes = DEFAULT_TMS_FRAME_BYTES) {
     if (!Number.isInteger(maxFrameBytes) || maxFrameBytes <= 0) throw new TmsProtocolError("Invalid response frame limit.");
@@ -85,13 +85,14 @@ export class LtmsResponseParser {
       const lineEnd = this.findStrictLineEnd();
       if (lineEnd === undefined) return undefined;
       const lineBytes = this.pending.subarray(0, lineEnd);
+      if (lineBytes.byteLength > MAX_TMS_RAW_LINE_BYTES) throw new TmsProtocolError("Response line exceeds the configured limit.");
       this.pending = this.pending.subarray(lineEnd + 2);
       const line = decode(lineBytes);
 
       if (line === "END") {
         if (this.pending.byteLength > 0) throw new TmsProtocolError("Trailing bytes after END.");
         this.result = { records: this.records, rawBytes: this.totalBytes };
-        return this.result;
+        return toPublicResponse(this.result);
       }
 
       if (line.startsWith("ERR|")) {
@@ -102,12 +103,13 @@ export class LtmsResponseParser {
       }
 
       if (!line) throw new TmsProtocolError("Empty response record.");
-      this.records.push(parseRecord(line));
+       if (this.records.length >= MAX_TMS_RESPONSE_RECORDS) throw new TmsProtocolError("TMS response contains too many records.");
+       this.records.push(parseRecord(line));
     }
   }
 
   finish(): TmsParsedResponse {
-    if (this.result) return this.result;
+    if (this.result) return toPublicResponse(this.result);
     if (this.pending.includes(CR) || this.pending.includes(LF)) {
       throw new TmsProtocolError("Response contains incomplete CRLF framing.");
     }
@@ -124,6 +126,16 @@ export class LtmsResponseParser {
     if (this.pending[firstControl + 1] !== LF) throw new TmsProtocolError("Response contains an invalid CRLF sequence.");
     return firstControl;
   }
+}
+
+function toPublicResponse(response: TmsInternalParsedResponse): TmsParsedResponse {
+  return {
+    records: response.records.map((record) => ({
+      fields: record.fields,
+      ...(record.recordType === undefined ? {} : { recordType: record.recordType }),
+    })),
+    rawBytes: response.rawBytes,
+  };
 }
 
 export function parseResponse(data: Buffer | string, maxFrameBytes = DEFAULT_TMS_FRAME_BYTES): TmsParsedResponse {

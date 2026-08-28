@@ -61,9 +61,9 @@ La siguiente lista describe cambios de implementación posteriores a esta tarea.
 
 - `tests/tms/real/loads.test.ts` — entrypoint Vitest opt-in para `LOAD_QUERY`/`LOAD_GET`; debe ser delgado, secuencial, sin `LOAD_BOOK`, sin retries y con fallo explícito si falta una precondición.
 - `tests/tms/real/load-probe.ts` — resolver el plan de probes aprobado, ejecutar el client/service read-only y derivar un `LOAD_ID` únicamente de una respuesta observada o fixture autorizada. No contiene valores reales hardcodeados ni persiste responses.
-- `tests/tms/real/load-evidence.ts` — tipos de summary, sanitizer y writer de `reports/tms/phase-2b/real-read-only-loads.json`; acepta solo metadata resumida, no `TmsRecord.rawLine`, DTOs completos ni configuración.
+- `tests/tms/real/load-evidence.ts` — tipos de summary, sanitizer y writer de archivos únicos create-only bajo `reports/tms/phase-2b/`; acepta solo metadata resumida, no `TmsRecord.rawLine`, DTOs completos ni configuración.
 - `vitest.real.loads.config.ts` — configuración separada, si se elige split de configs, con include exclusivo de `tests/tms/real/loads.test.ts` y los mismos aliases/timeout bounded sin ampliar `npm test`.
-- `reports/tms/phase-2b/real-read-only-loads.json` — artefacto generado por una ejecución autorizada; no se crea en esta tarea y solo puede contener evidencia sanitizada.
+- `reports/tms/phase-2b/real-read-only-loads-<timestamp>-<uuid>.json` — artefacto generado por una ejecución autorizada; no se crea en esta tarea y solo puede contener evidencia sanitizada.
 
 ### Fuera de modificación en 2B
 

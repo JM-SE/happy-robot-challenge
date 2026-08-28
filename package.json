@@ -11,7 +11,6 @@
     "test:real-tms:echo": "vitest run --config vitest.real.config.ts",
     "test:real-tms:loads": "vitest run --config vitest.real.loads.config.ts",
     "test:real-tms:booking": "vitest run --config vitest.real.booking.config.ts",
-    "diagnose:real-tms:load": "tsx tests/tms/real/load-structural-diagnostic.ts",
     "test:watch": "vitest",
     "mock:tms": "tsx mock/cli.ts",
     "typecheck": "tsc --noEmit"

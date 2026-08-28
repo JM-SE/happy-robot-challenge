@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { TmsClient } from "../../src/tms/client";
 import { TmsConfigurationError } from "../../src/tms/errors";
-import { assertRealTmsMode, assertTmsCommandAllowed, createRealBookingCapability, REAL_2B_COMMAND_POLICY, TMS_EXECUTION_SCOPES } from "../../src/tms/policy";
+import { assertRealTmsMode, assertTmsCommandAllowed, REAL_2B_COMMAND_POLICY, TMS_EXECUTION_SCOPES } from "../../src/tms/policy";
 import { testConfig } from "./test-helpers";
 
 describe("TMS activation policy", () => {
@@ -33,11 +33,16 @@ describe("TMS activation policy", () => {
     expect(() => assertTmsCommandAllowed(testConfig({ mode: "real" }), "LOAD_BOOK", { scope: TMS_EXECUTION_SCOPES.MOCK_LOCAL })).toThrow(TmsConfigurationError);
   });
 
-  it("requires the dedicated confirmed capability for real booking", () => {
+  it("keeps real booking fail-closed", () => {
     const config = testConfig({ mode: "real" });
-    expect(() => createRealBookingCapability(config, false)).toThrow(TmsConfigurationError);
-    const capability = createRealBookingCapability(config, true);
-    expect(() => assertTmsCommandAllowed(config, "LOAD_BOOK", capability)).not.toThrow();
     expect(() => assertTmsCommandAllowed(config, "LOAD_BOOK", { scope: TMS_EXECUTION_SCOPES.REAL_2C_CONTROLLED_BOOKING })).toThrow(TmsConfigurationError);
   });
+
+  it("rejects a forged 2C policy in the generic TMS client", () => {
+    const config = testConfig({ mode: "real" });
+    const forgedPolicy = { scope: TMS_EXECUTION_SCOPES.REAL_2C_CONTROLLED_BOOKING };
+
+    expect(() => new TmsClient(config, undefined, forgedPolicy)).toThrow(/generic TMS client/i);
+  });
+
 });

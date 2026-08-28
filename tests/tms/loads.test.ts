@@ -46,7 +46,6 @@ describe("load DTOs and mappings", () => {
 
   it("maps read-only records without requiring or exposing MAX_BUY", () => {
     const publicLoad = recordToPublicLoad({
-      rawLine: "LOAD_ID:LOAD-REAL|RATE:0002450",
       fields: {
         LOAD_ID: "LOAD-REAL",
         ORIG_STATE: "TX",
@@ -92,6 +91,10 @@ describe("load DTOs and mappings", () => {
     expect(recordToPublicLoad(record)).toMatchObject({ pickupDate: "2026-09-01", status: "AVAILABLE" });
     expect(recordToPublicLoad(record)).not.toHaveProperty("miles");
     expect(recordToLoadInternal(record)).not.toHaveProperty("maxBuy");
+  });
+
+  it("rejects oversized query text before framing", () => {
+    expect(() => parseLoadQueryInput({ originCity: "x".repeat(8193) })).toThrow(/non-empty/i);
   });
 
   it("filters only returned loads by pickup date without changing the wire query", () => {

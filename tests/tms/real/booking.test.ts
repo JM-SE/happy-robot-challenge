@@ -12,19 +12,19 @@ import {
 } from "./booking-probe";
 import { writeSanitizedBookingEvidence, type SanitizedBookingEvidence } from "./booking-evidence";
 import type { LoadOperationResult } from "../../../src/tms/controlled-booking";
+import type { ControlledBookingWorkflow } from "../../../src/tms/controlled-booking";
 
 function evidenceFor(
   stage: SanitizedBookingEvidence["stage"],
   operation: SanitizedBookingEvidence["operation"],
   result: LoadOperationResult,
-  startedAt: number,
   outcome: SanitizedBookingEvidence["outcome"],
 ): SanitizedBookingEvidence {
   return {
     stage,
     operation,
     outcome,
-    durationMs: Date.now() - startedAt,
+    durationMs: result.durationMs,
     requestBytes: result.requestBytes,
     responseBytes: result.response.rawBytes,
     recordCount: result.response.records.length,
@@ -63,6 +63,7 @@ describe("authorized real TMS controlled booking", () => {
   let config!: ReturnType<typeof getTmsConfig>;
   let input!: RealBookingRuntimeInput;
   let authorization: Parameters<typeof reconcileRealBooking>[1] | undefined;
+  let workflow: ControlledBookingWorkflow | undefined;
   const evidence: SanitizedBookingEvidence[] = [];
 
   beforeAll(() => {
@@ -80,9 +81,9 @@ describe("authorized real TMS controlled booking", () => {
     const capability = createBookingCapability(config);
     try {
       const result = await runRealControlledBooking(config, input, capability, undefined, {
-        onAuthorization: (created) => { authorization = created; },
+        onAuthorization: (created, createdWorkflow) => { authorization = created; workflow = createdWorkflow; },
       });
-      evidence.push(evidenceFor("query", "LOAD_QUERY", result.query.operation, startedAt, "success"));
+      evidence.push(evidenceFor("query", "LOAD_QUERY", result.query.operation, "success"));
       evidence.push({
         stage: "selection",
         operation: "LOAD_QUERY",
@@ -94,8 +95,8 @@ describe("authorized real TMS controlled booking", () => {
         reconciliation: "not-applicable",
         lifecycle: "not-run",
       });
-      evidence.push(evidenceFor("detail", "LOAD_GET", result.detail.operation, startedAt, "success"));
-      evidence.push(evidenceFor("booking", "LOAD_BOOK", result.booking.operation, startedAt, "success"));
+      evidence.push(evidenceFor("detail", "LOAD_GET", result.detail.operation, "success"));
+      evidence.push(evidenceFor("booking", "LOAD_BOOK", result.booking.operation, "success"));
       expect(result.selection.explicitSelectionConfirmed).toBe(true);
       expect(result.detail.load.loadId).toBe(result.selection.selectedLoadId);
       expect(result.booking.booking.loadId).toBe(result.selection.selectedLoadId);
@@ -107,8 +108,9 @@ describe("authorized real TMS controlled booking", () => {
       if (wasPostWriteUncertain(error) && authorization) {
         const reconciliationStartedAt = Date.now();
         try {
-          const reconciliation = await reconcileRealBooking(config, authorization);
-          evidence.push(evidenceFor("reconciliation", "LOAD_GET", reconciliation.operation, reconciliationStartedAt, reconciliation.outcome));
+           if (!workflow) throw new Error("Booking workflow was not retained for reconciliation.");
+           const reconciliation = await reconcileRealBooking(workflow, authorization);
+           evidence.push(evidenceFor("reconciliation", "LOAD_GET", reconciliation.operation, reconciliation.outcome));
         } catch (reconciliationError) {
           evidence.push(errorEvidence("reconciliation", "LOAD_GET", reconciliationError, reconciliationStartedAt, "still-uncertain"));
         }

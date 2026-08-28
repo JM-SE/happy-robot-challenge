@@ -77,6 +77,9 @@ export function testConfig(overrides: Partial<TmsConfig> = {}): TmsConfig {
     connectTimeoutMs: 25,
     responseTimeoutMs: 25,
     maxFrameBytes: 4096,
+    targetPin: "127.0.0.1:9000",
+    approvedTargets: ["127.0.0.1:9000"],
+    transportApproval: "private-network",
     ...overrides,
   };
 }

@@ -7,6 +7,8 @@ import { assertRealTmsMode } from "../../../src/tms/policy";
 import { TmsClient } from "../../../src/tms/client";
 import type { TmsConfig } from "../../../src/tms/types";
 import { writeSanitizedRealEvidence, type SanitizedRealProbeEvidence } from "./evidence";
+import { DeadlineBudget } from "../../../src/tms/deadline";
+import { MAX_TMS_DEADLINE_MS } from "../../../src/tms/limits";
 
 describe("authorized real TMS DEBUG_ECHO", () => {
   let config!: TmsConfig;
@@ -21,10 +23,19 @@ describe("authorized real TMS DEBUG_ECHO", () => {
     if (evidence.length > 0) await writeSanitizedRealEvidence(evidence);
   });
 
+  let deadline!: DeadlineBudget;
+
+  beforeAll(() => {
+    deadline = new DeadlineBudget(Math.min(MAX_TMS_DEADLINE_MS, config.connectTimeoutMs + config.responseTimeoutMs));
+  });
+
+  afterAll(() => deadline.dispose());
+
   const runSuccessProbe = async (probe: string, fields: Record<string, string>): Promise<void> => {
-    const requestBytes = buildRequest({ command: "DEBUG_ECHO", authToken: config.authToken, fields }, config.maxFrameBytes).byteLength;
+    const requestBytes = await deadline.runPhase("mapping", async () =>
+      buildRequest({ command: "DEBUG_ECHO", authToken: config.authToken, fields }, config.maxFrameBytes).byteLength);
     const startedAt = Date.now();
-    const response = await new TmsClient(config).execute({ command: "DEBUG_ECHO", fields, requestId: `phase-2a-${probe}` });
+    const response = await new TmsClient(config, undefined, undefined, undefined, { budget: deadline }).execute({ command: "DEBUG_ECHO", fields, requestId: `phase-2a-${probe}` });
     const data = responseToEchoResult(response);
 
     evidence.push({
@@ -54,11 +65,12 @@ describe("authorized real TMS DEBUG_ECHO", () => {
   it.skipIf(process.env.TMS_REAL_ECHO_AUTH_INVALID !== "true")("classifies explicitly authorized invalid authentication", async () => {
     const invalidConfig: TmsConfig = { ...config, authToken: "invalid-real-tms-token" };
     const requestFields = { MSG: "HELLO" };
-    const requestBytes = buildRequest({ command: "DEBUG_ECHO", authToken: invalidConfig.authToken, fields: requestFields }, invalidConfig.maxFrameBytes).byteLength;
+    const requestBytes = await deadline.runPhase("mapping", async () =>
+      buildRequest({ command: "DEBUG_ECHO", authToken: invalidConfig.authToken, fields: requestFields }, invalidConfig.maxFrameBytes).byteLength);
     const startedAt = Date.now();
 
     try {
-      await new TmsClient(invalidConfig).execute({ command: "DEBUG_ECHO", fields: requestFields, requestId: "phase-2a-invalid-auth" });
+      await new TmsClient(invalidConfig, undefined, undefined, undefined, { budget: deadline }).execute({ command: "DEBUG_ECHO", fields: requestFields, requestId: "phase-2a-invalid-auth" });
       throw new Error("The real TMS accepted the explicitly invalid authentication probe.");
     } catch (error) {
       expect(isTmsAdapterError(error)).toBe(true);

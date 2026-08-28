@@ -155,7 +155,7 @@ $env:TMS_REAL_LOAD_QUERY_JSON = '{"originState":"TX","maxResults":1}'
 npm run test:real-tms:loads
 ```
 
-The query input must be approved runtime data, not a value invented for compatibility testing. A query with zero records is a valid result; without an observed or approved load ID, `LOAD_GET` is recorded as `precondition-not-met` and is not faked. Evidence is written separately to `reports/tms/phase-2b/real-read-only-loads.json` and contains only sanitized metadata such as operation, byte counts, record counts, field names, terminal and lifecycle. It excludes host, port, token, IDs, filter values, raw wire, PII, `NOTES` and `MAX_BUY`.
+The query input must be approved runtime data, not a value invented for compatibility testing. A query with zero records is a valid result; without an observed or approved load ID, `LOAD_GET` is recorded as `precondition-not-met` and is not faked. Evidence is written separately to uniquely named, create-only files under `reports/tms/phase-2b/` and contains only sanitized metadata such as operation, byte counts, record counts, field names, terminal and lifecycle. It excludes host, port, token, IDs, filter values, raw wire, PII, `NOTES` and `MAX_BUY`.
 
 ## Controlled booking workflow (Phase 2C)
 

@@ -1,4 +1,5 @@
 export type TmsErrorStage = "configuration" | "validation" | "connect" | "write" | "response" | "parse";
+export type TmsWriteDisposition = "not-sent" | "sent" | "unknown";
 
 export interface TmsErrorMetadata {
   requestId?: string;
@@ -6,6 +7,8 @@ export interface TmsErrorMetadata {
   remoteCode?: string;
   records?: number;
   writeAttempted?: boolean;
+  writeDisposition?: TmsWriteDisposition;
+  retryAfterMs?: number;
 }
 
 export class TmsAdapterError extends Error {
@@ -42,6 +45,24 @@ export class TmsConfigurationError extends TmsAdapterError {
 export class TmsValidationError extends TmsAdapterError {
   constructor(message: string) {
     super({ type: "TMS_VALIDATION", code: "VALIDATION_ERROR", message, retryable: false, stage: "validation" });
+  }
+}
+
+export class TmsCallerAuthorizationError extends TmsAdapterError {
+  constructor(message = "The caller is not authorized for this operation.") {
+    super({ type: "TMS_AUTHORIZATION", code: "CALLER_NOT_AUTHORIZED", message, retryable: false, stage: "validation" });
+  }
+}
+
+export class TmsRateLimitError extends TmsAdapterError {
+  constructor(retryAfterMs?: number) {
+    super({ type: "TMS_RATE_LIMIT", code: "RATE_LIMITED", message: "The TMS request rate limit was exceeded.", retryable: true, stage: "validation", metadata: retryAfterMs === undefined ? {} : { retryAfterMs } });
+  }
+}
+
+export class TmsConcurrencyError extends TmsAdapterError {
+  constructor() {
+    super({ type: "TMS_CONCURRENCY", code: "CONCURRENCY_LIMIT", message: "The TMS is handling its maximum number of requests.", retryable: true, stage: "validation" });
   }
 }
 

@@ -95,7 +95,7 @@ describe("TmsClient", () => {
     expect(connect).toHaveBeenCalledTimes(1);
     expect(socket.writes).toHaveLength(1);
     expect(socket.destroyCalls).toBe(1);
-    expect(error).toMatchObject({ metadata: { writeAttempted: true } });
+    expect(error).toMatchObject({ metadata: { writeAttempted: true, writeDisposition: "sent" } });
     expect(error).toMatchObject({ metadata: { command: "LOAD_BOOK" } });
   });
 
@@ -167,7 +167,7 @@ describe("TmsClient", () => {
     const client = new TmsClient(testConfig(), socketConnect(socket));
     const pending = client.execute({ command: "DEBUG_ECHO", fields: { MSG: "hello" } });
     socket.emit("close");
-    await expect(pending).rejects.toMatchObject({ type: "TMS_CONNECTION", stage: "connect" });
+    await expect(pending).rejects.toMatchObject({ type: "TMS_CONNECTION", stage: "connect", metadata: { writeDisposition: "not-sent" } });
     expect(socket.destroyCalls).toBe(0);
     expectNoSocketListeners(socket);
   });
@@ -195,7 +195,7 @@ describe("TmsClient", () => {
     const client = new TmsClient(testConfig(), connect);
     const pending = client.execute({ command: "DEBUG_ECHO", fields: { MSG: "hello" } });
     socket.emit("connect");
-    await expect(pending).rejects.toMatchObject({ type: "TMS_CONNECTION", stage: "write" });
+    await expect(pending).rejects.toMatchObject({ type: "TMS_CONNECTION", stage: "write", metadata: { writeDisposition: "unknown" } });
     expect(connect).toHaveBeenCalledTimes(1);
     expect(socket.writes).toHaveLength(1);
     expect(socket.destroyCalls).toBe(1);
