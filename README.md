@@ -1,4 +1,4 @@
-# HappyRobot LTMS Adapter — Phase 2A/2B/2C
+# HappyRobot LTMS Adapter — Phase 2A/2B/2C/4 Operations
 
 This repository contains the first, minimal vertical slice of the carrier-sales TMS adapter:
 
@@ -6,7 +6,7 @@ This repository contains the first, minimal vertical slice of the carrier-sales 
 HTTP Route Handler → node:net → local LTMS mock
 ```
 
-Phase 1A–1D remains the local baseline. Phase 2A adds an explicitly opt-in validation track for the authorized candidate TMS using `DEBUG_ECHO`; Phase 2B adds separately guarded read-only probes for `LOAD_QUERY` and `LOAD_GET`; Phase 2C adds a locally verified, separately gated controlled-booking workflow whose real booking remains blocked pending final approval. HappyRobot/voice UI, FMCSA integration, persistence and deployment remain out of scope.
+Phase 1A–1D remains the local baseline. Phase 2A adds an explicitly opt-in validation track for the authorized candidate TMS using `DEBUG_ECHO`; Phase 2B adds separately guarded read-only probes for `LOAD_QUERY` and `LOAD_GET`; Phase 2C adds a locally verified, separately gated controlled-booking workflow whose real booking remains blocked pending final approval. Phase 4 adds a protected, read-only Operations dashboard backed by a temporary local projection. HappyRobot/voice UI, FMCSA integration, persistence and deployment remain out of scope.
 
 ## Requirements
 
@@ -92,7 +92,36 @@ npm run lint
 npm run build
 ```
 
-The tests cover the request builder, incremental `Buffer` parser, arbitrary chunk boundaries, strict CRLF framing, multiple records, `END`/`ERR`, byte limits, timeouts, socket cleanup, lifecycle races, new connections per request, echo/load/booking route validation, public/internal load mapping, state transitions, configurable fault scenarios and real local TCP integration.
+The tests cover the request builder, incremental `Buffer` parser, arbitrary chunk boundaries, strict CRLF framing, multiple records, `END`/`ERR`, byte limits, timeouts, socket cleanup, lifecycle races, new connections per request, echo/load/booking route validation, public/internal load mapping, state transitions, configurable fault scenarios, real local TCP integration, Operations sanitization, summary calculations, fixture determinism, response allowlists and filter serialization. `npm test` never opens a real-TMS connection.
+
+## Operations dashboard
+
+The protected pages are `/operations` and `/operations/calls/[callId]`. The Operations API routes are:
+
+| Method | Route | Purpose |
+| --- | --- | --- |
+| POST | `/api/operations/auth/login` | Create the UI session cookie |
+| POST | `/api/operations/auth/logout` | Clear the UI session cookie |
+| POST | `/api/operations/calls` | Ingest one handoff-shaped call record |
+| GET | `/api/operations/calls` | List sanitized call records |
+| GET | `/api/operations/calls/[callId]` | Read one sanitized call detail |
+| GET | `/api/operations/summary` | Read calculated dashboard KPIs |
+
+Ingestion uses the server-only `ADAPTER_SHARED_SECRET` in the `X-Adapter-API-Key` header. Dashboard pages and GET APIs use the separate server-only `OPERATIONS_UI_SECRET` through the `operations_session` cookie. Neither secret belongs in `NEXT_PUBLIC_*`, browser code, query parameters, request bodies, examples, logs or responses.
+
+For a deterministic local demonstration, set `ADAPTER_UI_DATA_MODE=fixture`; this creates eight local demo records. Safe configuration names are:
+
+```text
+ADAPTER_UI_DATA_MODE=fixture
+ADAPTER_SHARED_SECRET=<local-or-deployment-secret>
+OPERATIONS_UI_SECRET=<local-or-deployment-secret>
+```
+
+The ingestion payload keeps the exact handoff field names: `callId`, `occurredAt`, `mcNumber`, `fmcsaverified`, `otpVerified`, `bookingSuccessful`, `bookingRef`, `outcome`, `handoffReason`, `notes`, `mode`, `technicalStatus`, and optional `loadId`, `agreedRate`, `origin`, `destination`, `equipment`, and `publishedRate`. Missing or `null` `loadId`/`agreedRate` means no match/no rate. The sanitizer derives `mcMasked`, `fmcsaStatus`, `otpStatus`, `bookingStatus`, `handoffStatus`, `matchedLoads` and `bookingReference`; list responses omit `notes` and `handoffReason`, while detail may include only bounded sanitized values.
+
+For HappyRobot AI Extract, use the variable picker for each mapping: `response.mcNumber` to `mcNumber`, `response.loadId` to `loadId`, `response.agreedRate` to `agreedRate`, `response.fmcsaverified` to `fmcsaverified`, `response.otpVerified` to `otpVerified`, `response.bookingSuccessful` to `bookingSuccessful`, `response.bookingRef` to `bookingRef`, `response.outcome` to `outcome`, `response.handoffReason` to `handoffReason`, and `response.notes` to `notes`. Map `response.callId` and `response.occurredAt` when supplied, plus only the safe enrichment scalars `response.origin`, `response.destination`, `response.equipment` and `response.publishedRate` when implemented. Do not use hardcoded `@` expressions; the adapter does not own AI Extract.
+
+Demo records are displayed as `Demo/Mock`. `real-read-only` is displayed as `Real Read-Only` and never authorizes booking. The dashboard exposes no booking, cancel, retry or other mutation control. OTP delivery is unavailable, Twin provisioning is unavailable and the real `LOAD_BOOK` path remains disabled.
 
 ## Authorized real-TMS validation (Phase 2A)
 
@@ -208,4 +237,4 @@ Stop the mock with `Ctrl+C` and restart it to reset its isolated booking state.
 
 ## Current limitations
 
-The local mock supports `DEBUG_ECHO`, read-only `LOAD_QUERY`/`LOAD_GET`, stateful `LOAD_BOOK`, remote error codes and deterministic fault scenarios. Phase 2A validates real `DEBUG_ECHO`; Phase 2B validates real read-only loads through a separate runner; Phase 2C is implemented and verified locally but real booking remains gated. TLS, negotiation engine, FMCSA integration, HappyRobot, persistence and deployment remain out of scope.
+The local mock supports `DEBUG_ECHO`, read-only `LOAD_QUERY`/`LOAD_GET`, stateful `LOAD_BOOK`, remote error codes and deterministic fault scenarios. Phase 2A validates real `DEBUG_ECHO`; Phase 2B validates real read-only loads through a separate runner; Phase 2C is implemented and verified locally but real booking remains gated. The Operations fallback is temporary, process-local, in-memory and non-persistent; restart loses records and Railway multi-instance processes can diverge. It is not native Twin or a durable operational replacement. TLS, negotiation engine, FMCSA integration, HappyRobot, persistence and deployment remain out of scope.
