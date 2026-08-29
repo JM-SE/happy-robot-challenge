@@ -1,6 +1,6 @@
 # Phase 3D — Security, Configuration, and Real-Mode Gates Specification
 
-**Status:** **PLAN READY — CURRENT PLANNING/IMPLEMENTATION SLICE; 3D NOT COMPLETE**
+**Status:** **CLOSED — LOCAL MOCK-SAFE / REAL BOOKING DISABLED**
 
 ## Status and Objective
 
@@ -218,54 +218,54 @@ interface SafeLogEvent {
 - Recommended sampling: retain 100% of auth/configuration/policy denials and all anomalous leakage/security events; sample routine successful mock/read events at a bounded low rate (recommended 10%) if volume requires it. Do not sample away evidence of a denial.
 - Recommended retention: the shortest approved sink retention, initially seven days or the platform minimum if shorter, with no raw payload retention. Exact sink/retention remains an open question.
 
-## Implementation Steps
+## Implemented Controls and Verification
 
-1. **Config policy matrix:** Extract pure named constants/types and validate adapter mode, TMS activation, booking flag, `NODE_ENV`, secret presence/production strength, and unsafe combinations without logging values or performing IO.
-2. **Secret/auth hardening:** Preserve the single server-only secret, HMAC fixed-size comparison, `timingSafeEqual`, header-only auth, and external rotation-by-restart. Add focused tests for missing/blank/weak secrets and no leakage without changing non-production compatibility unnecessarily.
-3. **Guard integration:** Route all public booking decisions through the typed guard. Keep mock mode as the only public demo path; make real mode terminate with stable `403 REAL_BOOKING_DISABLED` before every booking dependency. Keep read-only real paths subject to existing TMS/target/transport gates.
-4. **Safe logging:** Extract the event allowlist, bounded correlation/duration/count handling, public error code mapping, redaction, and operation mapping. Adapt `client.ts` and HTTP boundaries without changing transport/write-disposition semantics.
-5. **Focused tests:** Add config matrix, secret/auth, override, zero-dependency, static import/leakage, logger, and target/TLS/authority regression tests.
-6. **Full local verification:** Run the required repository-local typecheck, lint, test, build, and diff checks without any real TMS or `LOAD_BOOK` operation.
-7. **Independent security review:** Review the diff/import graph, env sources, public responses, captured logs, and real reachability. Any newly reachable real booking path is a blocker and must be reported, not bypassed.
+1. **Config policy matrix:** Pure named constants/types validate adapter mode, TMS activation, booking flag, `NODE_ENV`, secret presence/production strength, and unsafe combinations without logging values or performing IO.
+2. **Secret/auth hardening:** The single server-only secret, HMAC fixed-size comparison, `timingSafeEqual`, header-only auth, and external rotation-by-restart are preserved; missing/blank/weak-secret and leakage behavior is covered without weakening non-production compatibility.
+3. **Guard integration:** Public booking decisions use the typed guard. Mock mode is the only public demo path; real mode terminates with stable `403 REAL_BOOKING_DISABLED` before every booking dependency. Read-only real paths remain subject to existing TMS/target/transport gates.
+4. **Safe logging:** The event allowlist, bounded correlation/duration/count handling, public error mapping, redaction, and operation mapping are enforced without changing transport/write-disposition semantics.
+5. **Focused tests:** Config matrix, secret/auth, override, zero-dependency, static import/leakage, logger, and target/TLS/authority regression criteria are demonstrated locally.
+6. **Full local verification:** Required repository-local typecheck, lint, test, build, and diff criteria are demonstrated without any real TMS or `LOAD_BOOK` operation.
+7. **Independent security review:** Diff/import graph, env sources, public responses, captured logs, and real reachability were reviewed; no newly reachable real booking path is accepted.
 
 ## Tests and Verification
 
 ### Focused 3D tests
 
-- [ ] Configuration matrix covers absent/default, blank/trimmed, invalid mode, mode/TMS mismatch, exact real activation, booking flag true/non-false, invalid timeout/frame/target, missing authority, pin/allowlist mismatch, and unsafe transport.
-- [ ] Production secret-strength tests reject missing/blank/weak values without exposing them; non-production short-secret behavior remains backward compatible unless an existing rule already rejects it.
-- [ ] Auth tests preserve HMAC fixed-size comparison and `timingSafeEqual`, distinguish missing/invalid adapter auth (`401`) from TMS auth (`502`), and prove no query/body auth.
-- [ ] Client override tests prove body/query/header/request-ID values cannot alter mode or booking policy; `NEXT_PUBLIC_*` is not a configuration source.
-- [ ] Public booking reachability tests prove mock mode reaches only the deterministic mock port and real mode reaches zero mock state, TMS client, capability, controlled workflow, ledger, target, transport, upstream, socket, and `LOAD_BOOK` dependencies.
-- [ ] Static import/export tests prove routes do not import raw env, real capability, controlled booking, attempt ledger, direct transport, or generic/direct booking seams.
-- [ ] Logger allowlist/redaction tests assert exact keys, bounded IDs/durations/counts, safe public statuses/codes, and absence of secrets, API keys, tokens, headers, body, MC, notes, pricing, proofs, nonces, frames, lines, targets, stacks, and raw errors.
-- [ ] Target authority/TLS/transport tests prove missing/forged/mismatched target validation fails before connect and existing approved-target behavior remains intact.
-- [ ] Existing Phase 1/2 parser, transport, deadline, limits, resource, policy, proof, ledger, evidence, no-retry, uncertainty, and cleanup regressions remain green.
+- [x] Configuration matrix covers absent/default, blank/trimmed, invalid mode, mode/TMS mismatch, exact real activation, booking flag true/non-false, invalid timeout/frame/target, missing authority, pin/allowlist mismatch, and unsafe transport.
+- [x] Production secret-strength tests reject missing/blank/weak values without exposing them; non-production short-secret behavior remains backward compatible unless an existing rule already rejects it.
+- [x] Auth tests preserve HMAC fixed-size comparison and `timingSafeEqual`, distinguish missing/invalid adapter auth (`401`) from TMS auth (`502`), and prove no query/body auth.
+- [x] Client override tests prove body/query/header/request-ID values cannot alter mode or booking policy; `NEXT_PUBLIC_*` is not a configuration source.
+- [x] Public booking reachability tests prove mock mode reaches only the deterministic mock port and real mode reaches zero mock state, TMS client, capability, controlled workflow, ledger, target, transport, upstream, socket, and `LOAD_BOOK` dependencies.
+- [x] Static import/export tests prove routes do not import raw env, real capability, controlled booking, attempt ledger, direct transport, or generic/direct booking seams.
+- [x] Logger allowlist/redaction tests assert exact keys, bounded IDs/durations/counts, safe public statuses/codes, and absence of secrets, API keys, tokens, headers, body, MC, notes, pricing, proofs, nonces, frames, lines, targets, stacks, and raw errors.
+- [x] Target authority/TLS/transport tests prove missing/forged/mismatched target validation fails before connect and existing approved-target behavior remains intact.
+- [x] Existing Phase 1/2 parser, transport, deadline, limits, resource, policy, proof, ledger, evidence, no-retry, uncertainty, and cleanup regressions remain green.
 
 ### Required repository-local verification
 
-- [ ] `npm run typecheck`
-- [ ] `npm run lint`
-- [ ] `npm test`
-- [ ] `npm run build`
-- [ ] `git diff --check`
-- [ ] Confirm no real TMS runner, real credentials, real endpoint, real socket, or real `LOAD_BOOK` was executed. Do not run `LOAD_BOOK` or any real TMS command as verification.
+- [x] `npm run typecheck`
+- [x] `npm run lint`
+- [x] `npm test`
+- [x] `npm run build`
+- [x] `git diff --check`
+- [x] Confirmed no real TMS runner, real credentials, real endpoint, real socket, or real `LOAD_BOOK` was executed. Do not run `LOAD_BOOK` or any real TMS command as verification.
 
 These checks verify the 3D boundary only. Railway/deployment/health checks belong to 3E; broader Phase 3 contract, integration, security, and deployment suite expansion belongs to 3F.
 
 ## Acceptance Criteria and Exit Signal
 
-- [ ] Unsafe adapter/TMS combinations fail closed with safe typed errors and stable `503 CONFIGURATION_UNAVAILABLE` mapping where an authenticated request can be evaluated.
-- [ ] `ADAPTER_MODE=mock` remains the safe default and the only mode allowed to reach public demo booking.
-- [ ] The one server-only `ADAPTER_SHARED_SECRET` is required, never exposed/logged, compared through the preserved HMAC/timing-safe boundary, and has the recommended production-only strength check.
-- [ ] No client request field, header, query value, request ID, `NEXT_PUBLIC_*` value, or raw process environment access can alter mode, target, authority, or booking policy.
-- [ ] Real read/validation paths remain constrained by TMS mode, target authority/pin/allowlist, TLS/transport, proof/handoff, deadline, resource, and existing Phase 2 controls.
-- [ ] Public real booking is unreachable and always returns `403 REAL_BOOKING_DISABLED` before mock state, client, capability, ledger, upstream, or transport access.
-- [ ] Safe structured logs implement the explicit allowlist, bounded correlation and measurements, redaction rules, and stable public error categories; no raw payload is logged.
-- [ ] Phase 2 controls, no-retry/uncertainty semantics, evidence boundaries, and `rollbackAvailable=false` remain intact.
-- [ ] Required local verification passes without real TMS or real `LOAD_BOOK` execution.
-- [ ] 3D exits only when unsafe configuration fails closed, the server-only secret/auth boundary is enforced, safe logging is tested, public real booking is unreachable, and real-readiness dependencies are explicit and reviewed.
-- [ ] 3D does **not** exit by setting an enable flag, creating a real capability, approving a provider, or executing a real booking.
+- [x] Unsafe adapter/TMS combinations fail closed with safe typed errors and stable `503 CONFIGURATION_UNAVAILABLE` mapping where an authenticated request can be evaluated.
+- [x] `ADAPTER_MODE=mock` remains the safe default and the only mode allowed to reach public demo booking.
+- [x] The one server-only `ADAPTER_SHARED_SECRET` is required, never exposed/logged, compared through the preserved HMAC/timing-safe boundary, and has the recommended production-only strength check.
+- [x] No client request field, header, query value, request ID, `NEXT_PUBLIC_*` value, or raw process environment access can alter mode, target, authority, or booking policy.
+- [x] Real read/validation paths remain constrained by TMS mode, target authority/pin/allowlist, TLS/transport, proof/handoff, deadline, resource, and existing Phase 2 controls.
+- [x] Public real booking is unreachable and always returns `403 REAL_BOOKING_DISABLED` before mock state, client, capability, ledger, upstream, or transport access.
+- [x] Safe structured logs implement the explicit allowlist, bounded correlation and measurements, redaction rules, and stable public error categories; no raw payload is logged.
+- [x] Phase 2 controls, no-retry/uncertainty semantics, evidence boundaries, and `rollbackAvailable=false` remain intact.
+- [x] Required local verification passes without real TMS or real `LOAD_BOOK` execution.
+- [x] 3D closes with unsafe configuration failing closed, the server-only secret/auth boundary enforced, safe logging tested, public real booking unreachable, and real-readiness dependencies explicit and reviewed.
+- [x] 3D does **not** enable real booking, become sandbox-ready, or become production-enabled: no enable flag, real capability, provider approval, or real booking execution is introduced.
 
 ## Risks, Rollback, Safety, and Dependencies
 
