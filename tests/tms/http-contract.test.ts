@@ -18,12 +18,12 @@ describe("Phase 3A HTTP boundary", () => {
     expect(isAdapterAuthorized("contract-secret", { NODE_ENV: "test" })).toBe(false);
   });
 
-  it("returns a stable authenticated booking denial with correlation metadata", async () => {
+  it("returns a stable authenticated booking domain error with correlation metadata", async () => {
     vi.stubEnv("ADAPTER_SHARED_SECRET", "contract-secret");
     const response = await book(request(JSON.stringify({ loadId: "L-1", mc: "MC-1", agreedRate: 100 })));
     const body = await response.json();
-    expect(response.status).toBe(403);
-    expect(body.error).toEqual({ code: "POLICY_DENIED", message: "The operation is not permitted.", retryable: false });
+    expect(response.status).toBe(404);
+    expect(body.error).toEqual({ code: "LOAD_NOT_FOUND", message: "Load was not found.", retryable: false });
     expect(body.meta.requestId).toBeTruthy();
     expect(response.headers.get("x-request-id")).toBe(body.meta.requestId);
   });

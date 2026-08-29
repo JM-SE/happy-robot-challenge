@@ -4,7 +4,7 @@
 
 Phase 1 is complete. Phase 2 is committed as `048ae3f` and closed for its safety gates. The adapter has never executed a real TMS operation or real `LOAD_BOOK`; both remain disabled until a later, separately approved Phase 3 follow-up. This phase index must not be read as authorization for a production booking path.
 
-The goal of Phase 3 is to make the adapter safely consumable by HappyRobot through a stable HTTP contract and deterministic mock workflow while preserving the mature Phase 1/2 foundations. It adds a thin HTTP boundary around the TCP protocol, parser, transport, deadline, limits, resource controls, policy, mock, and controlled-workflow code; it does not rewrite them. The current implementation-ready slice is 3A, specified in [`phase-3a-http-integration-contract.spec.md`](./phase-3a-http-integration-contract.spec.md).
+The goal of Phase 3 is to make the adapter safely consumable by HappyRobot through a stable HTTP contract and deterministic mock workflow while preserving the mature Phase 1/2 foundations. It adds a thin HTTP boundary around the TCP protocol, parser, transport, deadline, limits, resource controls, policy, mock, and controlled-workflow code; it does not rewrite them. Phase 3A and 3B are implemented and committed at `8b77734` and `73205d4`; 3C is implemented locally, with commit status not asserted here. The current planning/implementation slice is 3D, specified in [`phase-3d-security-configuration-real-mode-gates.spec.md`](./phase-3d-security-configuration-real-mode-gates.spec.md), and 3D is not complete.
 
 ### Responsibility boundary
 
@@ -37,17 +37,17 @@ The goal of Phase 3 is to make the adapter safely consumable by HappyRobot throu
 
 | Phase | Objective | Scope | Non-goal | Dependencies | Exit signal | Primary risk |
 | --- | --- | --- | --- | --- | --- | --- |
-| **3A — HTTP integration contract** *(current)* | Establish one stable authenticated JSON boundary. | Auth, request IDs, method/content-type/body limits, envelopes, safe errors, thin route orchestration for echo/search/detail/book. | Any real booking or production mutation path. | Phase 1/2 code and safety gates. | Contract tests prove authenticated read routes and safe booking denial. | Duplicated route policy or leakage at the boundary. |
-| [**3B — Endpoint/domain contracts**](./phase-3b-endpoint-domain-contracts.spec.md) | Finalize public DTOs and endpoint semantics. | Search/detail summaries, detail shape, booking input/output contract, normalized domain errors. | HappyRobot/FMCSA/OTP/voice/Twin implementation; real booking approval. | 3A. | DTOs are versionable, closed, and mapped to existing service/ports. | Invented fields or exposing internal load/pricing data. |
-| **3C — Deterministic mock/demo scenarios** | Demonstrate the workflow without a provider side effect. | Mock search/detail and explicitly documented mock booking/demo scenarios, including faults and idempotent test behavior. | Treating mock success as real TMS proof; any real connection/write. | 3A, 3B, existing `mock/`. | Repeatable demo and fault matrix with zero real calls. | Mock behavior diverges from parser/transport contracts or looks production-authorized. |
-| **3D — Security/configuration and real-mode gates** | Make runtime mode and future authority boundaries explicit. | Server-only adapter config, secret provisioning hooks, default-deny booking guard, target/egress/authority checks, safe logs, approval gates. | Enabling production real `LOAD_BOOK` in this phase. | 3A–3C plus Phase 2 gates. | Unsafe combinations fail closed; real booking remains explicitly unavailable until separate approval. | Configuration or caller input bypasses a gate. |
+| **3A — HTTP integration contract** *(implemented)* | Establish one stable authenticated JSON boundary. | Auth, request IDs, method/content-type/body limits, envelopes, safe errors, thin route orchestration for echo/search/detail/book. | Any real booking or production mutation path. | Phase 1/2 code and safety gates. | Contract tests prove authenticated read routes and safe booking denial. | Duplicated route policy or leakage at the boundary. |
+| [**3B — Endpoint/domain contracts**](./phase-3b-endpoint-domain-contracts.spec.md) *(implemented)* | Finalize public DTOs and endpoint semantics. | Search/detail summaries, detail shape, booking input/output contract, normalized domain errors. | HappyRobot/FMCSA/OTP/voice/Twin implementation; real booking approval. | 3A. | DTOs are versionable, closed, and mapped to existing service/ports. | Invented fields or exposing internal load/pricing data. |
+| [**3C — Deterministic mock/demo scenarios**](./phase-3c-deterministic-mock-demo.spec.md) *(implemented locally; commit status not asserted)* | Demonstrate the workflow without a provider side effect. | Mock search/detail and explicitly documented mock booking/demo scenarios, including faults and idempotent test behavior. | Treating mock success as real TMS proof; any real connection/write. | 3A, 3B, existing `mock/`. | Repeatable demo and fault matrix with zero real calls. | Mock behavior diverges from parser/transport contracts or looks production-authorized. |
+| [**3D — Security/configuration and real-mode gates**](./phase-3d-security-configuration-real-mode-gates.spec.md) *(current planning/implementation slice; not complete)* | Make runtime mode and future authority boundaries explicit. | Server-only adapter config, secret provisioning hooks, default-deny booking guard, target/egress/authority checks, safe logs, approval gates. | Enabling production real `LOAD_BOOK` in this phase. | 3A–3C plus Phase 2 gates. | Unsafe combinations fail closed; real booking remains explicitly unavailable until separate approval. | Configuration or caller input bypasses a gate. |
 | **3E — Railway-compatible deployment/health/runtime** | Operate the adapter safely in the intended runtime. | HTTPS deployment shape, process/runtime settings, bounded health/readiness, shutdown/cleanup, environment contract. | Health exposing TMS credentials or sensitive configuration. | Stable 3A contract and 3D config boundary. | Deployment smoke checks and health policy pass without external booking. | Health/observability or platform behavior leaks secrets or changes mode. |
 | **3F — Contract/integration/security/deployment tests** | Prove behavior and non-reachability. | HTTP contract, mock integration, security/static checks, resource/deadline regression, deployment checks. | Running real TMS or real `LOAD_BOOK` as a local acceptance test. | 3A–3E. | Required suites pass; real tests remain excluded or explicitly blocked. | Green tests fail to prove absence of a booking escape hatch. |
 | **3G — README/integration documentation** | Make integration use and limits durable. | Endpoint examples, auth/request-ID rules, errors, mock setup, deployment/env guidance, non-goals, approval boundary. | Publishing secrets, production credentials, or claiming real booking readiness. | 3A–3F decisions. | A new integrator can use mock-safe endpoints without undocumented assumptions. | Docs drift from the actual contract or imply production authority. |
 
 ## Phase Details
 
-### 3A — HTTP integration contract (current)
+### [3A — HTTP integration contract](./phase-3a-http-integration-contract.spec.md) — implemented
 
 - **Objective:** Provide authenticated public HTTPS JSON routes for echo, read-only load search/detail, and a safely denied booking surface with one response/error/correlation contract.
 - **Scope:** `POST /api/tms/echo`, `POST /api/tms/loads/search`, `POST /api/tms/loads/detail`, and `POST /api/tms/loads/book`; shared API-key auth, bounded JSON, request IDs, normalized envelopes/statuses, and safe logs. An unauthenticated `GET /api/health` is optional and deferred to 3E.
@@ -57,7 +57,7 @@ The goal of Phase 3 is to make the adapter safely consumable by HappyRobot throu
 - **Acceptance/exit criteria:** Authenticated read routes return stable envelopes with request IDs; invalid method/content type/body/auth is bounded and safe; booking shape is validated but mutation is denied before upstream access; real mode returns stable `REAL_BOOKING_DISABLED`; no secret/raw-wire/internal-field leakage.
 - **Risks:** Auth added inconsistently, TMS `AUTH_FAILED` confused with adapter auth, or a route reaches the isolated booking seam.
 
-### [3B — Endpoint/domain contracts](./phase-3b-endpoint-domain-contracts.spec.md)
+### [3B — Endpoint/domain contracts](./phase-3b-endpoint-domain-contracts.spec.md) — implemented
 
 - **Objective:** Lock the public search/detail/book DTOs and behavior after the transport-independent HTTP boundary exists.
 - **Scope:** Closed request/response schemas, public load summary/detail allowlists, normalized domain error codes, and the mock-booking contract that 3C will exercise.
@@ -67,7 +67,7 @@ The goal of Phase 3 is to make the adapter safely consumable by HappyRobot throu
 - **Acceptance/exit criteria:** Inputs use only approved names; no date field or other invented domain field is introduced; internal fields such as `MAX_BUY` cannot be represented publicly; booking remains mock-only or denied.
 - **Risks:** Public DTOs accidentally mirror internal records or create a reusable real-booking port.
 
-### 3C — Deterministic mock/demo scenarios
+### [3C — Deterministic mock/demo scenarios](./phase-3c-deterministic-mock-demo.spec.md) — implemented locally; commit status not asserted
 
 - **Objective:** Give HappyRobot/integration reviewers a repeatable demo without real authority or side effects.
 - **Scope:** Existing mock dataset/server and fault scenarios, explicit mock mode, deterministic search/detail, and a separately labeled mock booking demo if 3B approves it.
@@ -77,7 +77,7 @@ The goal of Phase 3 is to make the adapter safely consumable by HappyRobot throu
 - **Acceptance/exit criteria:** Repeated runs produce the same normalized outcomes; faults remain bounded; mock success is labeled mock and cannot enable `LOAD_BOOK` real mode.
 - **Risks:** Mock drift, state leakage between runs, or a demo path becoming an escape hatch.
 
-### 3D — Security/configuration and real-mode gates
+### [3D — Security/configuration and real-mode gates](./phase-3d-security-configuration-real-mode-gates.spec.md) — current planning/implementation slice; not complete
 
 - **Objective:** Centralize server-only configuration and preserve fail-closed real-booking protection.
 - **Scope:** `ADAPTER_MODE`, `ADAPTER_SHARED_SECRET`, `REAL_BOOKING_ENABLED`, existing TMS configuration, secret rotation/provisioning boundary, independent authority/target/egress inputs, and allowlisted logging.
