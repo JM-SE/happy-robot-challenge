@@ -1,0 +1,3 @@
+import type { UiState } from "./types";
+export function status(value: string | undefined): UiState { if (value === "VERIFIED" || value === "SUCCESS" || value === "BOOKED" || value === "COMPLETED") return "SUCCESS_STATE"; if (value === "FAILED" || value === "ERROR" || value === "TIMEOUT" || value === "FAILED_NEGOTIATION") return "FAILED_STATE"; if (value === "NOT_REQUESTED" || value === "NOT_RUN" || value === "BOOKING_NOT_ATTEMPTED") return "NOT_ATTEMPTED_STATE"; if (value === "UNAVAILABLE") return "UNAVAILABLE_STATE"; return "UNKNOWN_STATE"; }
+export const label = (value: string | undefined) => value?.replaceAll("_", " ") ?? "Unavailable";

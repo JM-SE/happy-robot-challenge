@@ -1,0 +1,2 @@
+const steps = ["Call received", "FMCSA validation", "OTP identity confirmation", "Load search", "Load detail", "Negotiation", "Booking", "Senior representative handoff"];
+export function Timeline({ values = [] }: { values?: Array<{ name?: string; status?: string; occurredAt?: string }> }) { return <ol className="timeline">{steps.map((name, index) => { const value = values[index]; return <li key={name}><b>{name}</b><span>{value?.status ?? "Not attempted"}</span>{value?.occurredAt ? <small>{value.occurredAt}</small> : null}</li>; })}</ol>; }

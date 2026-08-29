@@ -1,0 +1,2 @@
+import { cookies } from "next/headers"; import { redirect } from "next/navigation"; import { hasValidSession } from "../../../../src/operations/session-helper"; import CallDetail from "../../../../src/operations/ui/CallDetail";
+export default async function CallPage({ params }: { params: Promise<{ callId: string }> }) { if (!hasValidSession((await cookies()).toString())) redirect("/operations/login"); const { callId } = await params; return <CallDetail callId={callId} />; }

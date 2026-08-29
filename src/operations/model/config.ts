@@ -1,0 +1,2 @@
+export const filters = ["outcome", "fmcsaStatus", "otpStatus", "bookingStatus", "mode"] as const;
+export const health = [{ label: "Twin", state: "UNAVAILABLE", detail: "Twin quota fallback: local projection is active." }, { label: "OTP delivery", state: "UNAVAILABLE", detail: "Delivery is unavailable; recorded status only." }, { label: "Loadboard/TMS read", state: "NOT_CONFIGURED", detail: "No safe read signal is configured." }, { label: "Real LOAD_BOOK", state: "DISABLED", detail: "Real booking is disabled." }];

@@ -1,0 +1,2 @@
+import type { Row } from "../model/types"; import { StatusBadge } from "./StatusBadge";
+export function CallOverview({ call }: { call: Row }) { return <section><h2>Call overview</h2><p>Masked MC: {call.mcMasked ?? "Unavailable"}</p><p>Mode: {call.mode === "demo" ? "Demo/Mock" : "Real Read-Only"}</p><p>Outcome: {call.outcome}</p><p>Handoff: <StatusBadge value={call.handoffStatus} /></p><p>Technical: <StatusBadge value={call.technicalStatus} /></p></section>; }
