@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST as echo } from "../../app/api/tms/echo/route";
 import { POST as search } from "../../app/api/tms/loads/search/route";
 import { POST as detail } from "../../app/api/tms/loads/detail/route";
@@ -10,7 +10,7 @@ import { createMockLtmsServer } from "../../mock/ltms-server";
 const jsonRequest = (path: string, body: string): Request => new Request(`http://localhost${path}`, {
   method: "POST",
   body,
-  headers: { "content-type": "application/json" },
+  headers: { "content-type": "application/json", "x-adapter-api-key": "adapter-secret" },
 });
 
 function configureTms(host: string, port: number): void {
@@ -24,6 +24,10 @@ function configureTms(host: string, port: number): void {
 
 afterEach(() => {
   vi.unstubAllEnvs();
+});
+
+beforeEach(() => {
+  vi.stubEnv("ADAPTER_SHARED_SECRET", "adapter-secret");
 });
 
 describe("HTTP error contract", () => {
@@ -91,7 +95,7 @@ describe("route validation and fault mapping", () => {
   ] as const)("returns 400 for invalid JSON before opening a TMS socket (%s)", async (route, path) => {
     const response = await route(jsonRequest(path, "{not-json"));
     expect(response.status).toBe(400);
-    expect(await response.json()).toMatchObject({ ok: false, error: { type: "TMS_VALIDATION", code: "VALIDATION_ERROR" } });
+      expect(await response.json()).toMatchObject({ ok: false, error: { code: "MALFORMED_JSON" }, meta: { requestId: expect.any(String) } });
   });
 
   it("rejects unsafe echo input and never exposes the auth token", async () => {
@@ -107,7 +111,7 @@ describe("route validation and fault mapping", () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({
       ok: false,
-      error: { type: "TMS_VALIDATION", code: "VALIDATION_ERROR" },
+      error: { code: "VALIDATION_ERROR" },
     });
   });
 
@@ -122,11 +126,12 @@ describe("route validation and fault mapping", () => {
       const address = await server.start();
       configureTms(address.host, address.port);
       const response = await echo(jsonRequest("/api/tms/echo", JSON.stringify({ message: "hello" })));
-      expect(response.status).toBe(401);
+      expect(response.status).toBe(502);
       const body = await response.json();
-      expect(body).toEqual({
+      expect(body).toMatchObject({
         ok: false,
-        error: { type: "TMS_REMOTE", code: "AUTH_FAILED", message: "The TMS rejected the request (AUTH_FAILED).", retryable: false },
+        error: { code: "TMS_AUTH_FAILED", message: "The TMS rejected the request authorization.", retryable: false },
+        meta: { requestId: expect.any(String) },
       });
       expect(JSON.stringify(body)).not.toContain("route-secret");
       expect(JSON.stringify(log.mock.calls)).not.toContain("route-secret");

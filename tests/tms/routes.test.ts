@@ -20,19 +20,21 @@ describe("POST /api/tms/echo", () => {
     vi.stubEnv("TMS_CONNECT_TIMEOUT_MS", "1000");
     vi.stubEnv("TMS_RESPONSE_TIMEOUT_MS", "1000");
     vi.stubEnv("TMS_MAX_FRAME_BYTES", "4096");
+    vi.stubEnv("ADAPTER_SHARED_SECRET", "adapter-secret");
 
     const response = await POST(new Request("http://localhost/api/tms/echo", {
-      method: "POST", body: JSON.stringify({ message: "hello" }), headers: { "content-type": "application/json" },
+      method: "POST", body: JSON.stringify({ message: "hello" }), headers: { "content-type": "application/json", "x-adapter-api-key": "adapter-secret" },
     }));
     expect(response.status).toBe(200);
     const body = await response.json();
-    expect(body).toEqual({ ok: true, data: { message: "hello", fieldCount: 3 } });
+    expect(body).toMatchObject({ ok: true, data: { message: "hello", fieldCount: 3 }, meta: { requestId: expect.any(String) } });
     expect(JSON.stringify(body)).not.toContain("test-secret");
   });
 
   it("validates input without opening a socket", async () => {
+    vi.stubEnv("ADAPTER_SHARED_SECRET", "adapter-secret");
     const response = await POST(new Request("http://localhost/api/tms/echo", {
-      method: "POST", body: JSON.stringify({ message: "bad|message" }), headers: { "content-type": "application/json" },
+      method: "POST", body: JSON.stringify({ message: "bad|message" }), headers: { "content-type": "application/json", "x-adapter-api-key": "adapter-secret" },
     }));
     expect(response.status).toBe(400);
     expect((await response.json()).ok).toBe(false);

@@ -1,47 +1,16 @@
-import { randomUUID } from "node:crypto";
+import { getAdapterConfig } from "../../../../src/tms/adapter-config";
 import { getTmsConfig } from "../../../../src/tms/config";
 import { TmsClient } from "../../../../src/tms/client";
-import { TmsValidationError } from "../../../../src/tms/errors";
 import { responseToEchoResult } from "../../../../src/tms/echo";
-import { errorResponse, json, readJsonBody } from "../../../../src/tms/http";
-import { MAX_HTTP_TEXT_BYTES } from "../../../../src/tms/limits";
+import { handleAdapterRequest } from "../../../../src/tms/http-contract";
+import { parseHttpEcho } from "../../../../src/tms/http-dto";
 import { admitTmsRequest } from "../../../../src/tms/http-controls";
 import { MAX_TMS_DEADLINE_MS } from "../../../../src/tms/limits";
-
 export const runtime = "nodejs";
-
-export async function POST(request: Request): Promise<Response> {
-  let body: unknown;
-  try {
-    body = await readJsonBody(request);
-  } catch (error) {
-    return errorResponse(error);
-  }
-
-  if (
-    !body ||
-    typeof body !== "object" ||
-    Array.isArray(body) ||
-    Object.keys(body).some((key) => key !== "message") ||
-    typeof (body as { message?: unknown }).message !== "string"
-  ) {
-    return errorResponse(new TmsValidationError("Request body must contain a message string."));
-  }
-
-  const message = (body as { message: string }).message;
-  if (!message.trim() || new TextEncoder().encode(message).byteLength > MAX_HTTP_TEXT_BYTES || message.includes("|") || message.includes("\r") || message.includes("\n")) {
-    return errorResponse(new TmsValidationError("Message must be non-empty and contain no framing characters."));
-  }
-
-  const requestId = request.headers.get("x-request-id")?.slice(0, 64) || randomUUID();
-  try {
-    const client = new TmsClient(getTmsConfig(), undefined, undefined, undefined, {
-      admissionFactory: () => admitTmsRequest({ deadlineMs: MAX_TMS_DEADLINE_MS, rateKey: "DEBUG_ECHO" }),
-    });
-    const response = await client.execute({ command: "DEBUG_ECHO", fields: { MSG: message }, requestId });
-    const data = responseToEchoResult(response);
-    return json({ ok: true, data }, 200);
-  } catch (error) {
-    return errorResponse(error);
-  }
-}
+export const POST = (request: Request) => handleAdapterRequest(request, async (body, context) => {
+  const input = parseHttpEcho(body);
+  getAdapterConfig();
+  const client = new TmsClient(getTmsConfig(), undefined, undefined, undefined, { admissionFactory: () => admitTmsRequest({ deadlineMs: MAX_TMS_DEADLINE_MS, rateKey: "DEBUG_ECHO" }) });
+  return responseToEchoResult(await client.execute({ command: "DEBUG_ECHO", fields: { MSG: input.message }, requestId: context.requestId }));
+});
+export const GET = (request: Request) => handleAdapterRequest(request, async () => undefined);

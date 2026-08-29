@@ -1,25 +1,12 @@
-import { errorResponse, readJsonBody } from "../../../../../src/tms/http";
-import { assertBookingCallerAuthorized } from "../../../../../src/tms/caller-authorization";
-import { TmsCallerAuthorizationError } from "../../../../../src/tms/errors";
-
+import { getAdapterConfig } from "../../../../../src/tms/adapter-config";
+import { handleAdapterRequest, HttpContractError } from "../../../../../src/tms/http-contract";
+import { parseHttpBooking } from "../../../../../src/tms/http-dto";
 export const runtime = "nodejs";
-
-export async function POST(request: Request): Promise<Response> {
-  let body: unknown;
-  try {
-    body = await readJsonBody(request);
-  } catch (error) {
-    return errorResponse(error);
-  }
-
-  try {
-    assertBookingCallerAuthorized();
-  } catch (error) {
-    return errorResponse(error);
-  }
-
-  // The public mutation surface is intentionally deny-by-default. Controlled
-  // booking remains a direct test seam until Phase 3 authority is integrated.
-  void body;
-  return errorResponse(new TmsCallerAuthorizationError());
-}
+export const POST = (request: Request) => handleAdapterRequest(request, async (body) => {
+  const input = parseHttpBooking(body);
+  const config = getAdapterConfig();
+  void input;
+  // There is deliberately no client, port, capability, or LOAD_BOOK call here.
+  throw new HttpContractError(403, config.mode === "real" ? "REAL_BOOKING_DISABLED" : "POLICY_DENIED", config.mode === "real" ? "Booking is disabled." : "The operation is not permitted.");
+});
+export const GET = (request: Request) => handleAdapterRequest(request, async () => undefined);
