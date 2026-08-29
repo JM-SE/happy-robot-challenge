@@ -3,6 +3,7 @@ import { MAX_HTTP_BODY_BYTES } from "./limits";
 import { isAdapterAuthorized } from "./http-auth";
 import { createRequestContext, requestContextHeaders, type RequestContext } from "./request-context";
 import { readJsonBody } from "./http";
+import { BookingConflictError, LoadNotFoundError, RateNotAcceptedError } from "./domain-errors";
 
 export const ADAPTER_API_KEY_HEADER = "x-adapter-api-key";
 export const CONTENT_TYPE_HEADER = "content-type";
@@ -28,6 +29,8 @@ const PUBLIC_MESSAGES: Record<string, string> = {
   PROTOCOL_ERROR: "The upstream response was invalid.",
   SERVICE_UNAVAILABLE: "The service is temporarily unavailable.",
   TMS_TIMEOUT: "The upstream service timed out.",
+  BOOKING_CONFLICT: "The load is no longer available.",
+  RATE_NOT_ACCEPTED: "The offered rate was not accepted.",
 };
 
 export function successResponse(data: unknown, context: RequestContext): Response {
@@ -43,6 +46,9 @@ export function publicErrorResponse(error: unknown, context: RequestContext, all
 
 export function mapPublicError(error: unknown): { status: number; code: string; message: string; retryable: boolean } {
   if (error instanceof HttpContractError) return { status: error.status, code: error.code, message: error.publicMessage, retryable: error.retryable };
+  if (error instanceof LoadNotFoundError) return { status: 404, code: "LOAD_NOT_FOUND", message: PUBLIC_MESSAGES.LOAD_NOT_FOUND!, retryable: false };
+  if (error instanceof BookingConflictError) return { status: 409, code: "BOOKING_CONFLICT", message: PUBLIC_MESSAGES.BOOKING_CONFLICT!, retryable: false };
+  if (error instanceof RateNotAcceptedError) return { status: 422, code: "RATE_NOT_ACCEPTED", message: PUBLIC_MESSAGES.RATE_NOT_ACCEPTED!, retryable: false };
   if (error instanceof TmsRemoteError) {
     if (error.remoteCode === "UNKNOWN_LOAD") return { status: 404, code: "LOAD_NOT_FOUND", message: PUBLIC_MESSAGES.LOAD_NOT_FOUND!, retryable: false };
     if (error.remoteCode === "AUTH_FAILED") return { status: 502, code: "TMS_AUTH_FAILED", message: PUBLIC_MESSAGES.TMS_AUTH_FAILED!, retryable: false };

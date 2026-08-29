@@ -2,7 +2,8 @@ import { getAdapterConfig } from "../../../../../src/tms/adapter-config";
 import { getTmsConfig } from "../../../../../src/tms/config";
 import { TmsClient } from "../../../../../src/tms/client";
 import { handleAdapterRequest } from "../../../../../src/tms/http-contract";
-import { parseHttpSearch, toHttpPublicLoad } from "../../../../../src/tms/http-dto";
+import { parseHttpSearch } from "../../../../../src/tms/http-dto";
+import { mapPublicLoadSummaries } from "../../../../../src/tms/public-load-mapper";
 import { searchLoads } from "../../../../../src/tms/service";
 import { admitTmsRequest } from "../../../../../src/tms/http-controls";
 import { MAX_TMS_DEADLINE_MS } from "../../../../../src/tms/limits";
@@ -11,6 +12,6 @@ export const POST = (request: Request) => handleAdapterRequest(request, async (b
   const input = parseHttpSearch(body);
   getAdapterConfig();
   const client = new TmsClient(getTmsConfig(), undefined, undefined, undefined, { admissionFactory: () => admitTmsRequest({ deadlineMs: MAX_TMS_DEADLINE_MS, rateKey: "LOAD_QUERY" }) });
-  return { loads: (await searchLoads(input, client)).map(toHttpPublicLoad) };
+  return { loads: mapPublicLoadSummaries(await searchLoads(input, client), input.maxResults) };
 });
 export const GET = (request: Request) => handleAdapterRequest(request, async () => undefined);
