@@ -1,3 +1,4 @@
 import { createSessionCookie } from "../../../../../src/operations/session-helper";
 import { verifyUiSecret } from "../../../../../src/operations/operations-auth";
+export const runtime = "nodejs";
 export async function POST(request: Request) { try { const body = await request.json() as { secret?: unknown }; if (typeof body.secret !== "string" || !verifyUiSecret(body.secret)) return Response.json({ ok: false, error: { code: "OPERATIONS_UNAUTHORIZED", message: "Operations access is required.", retryable: false } }, { status: 401 }); const response = Response.json({ ok: true, data: { authenticated: true }, meta: { source: "adapter-fallback" } }); const cookie = createSessionCookie(); if (cookie) response.headers.set("Set-Cookie", cookie); return response; } catch { return Response.json({ ok: false, error: { code: "VALIDATION_ERROR", message: "The request is invalid.", retryable: false } }, { status: 400 }); } }
