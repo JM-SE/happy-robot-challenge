@@ -1,4 +1,4 @@
-import { setTmsMappingRecordIndex, TmsUpstreamError, type TmsMappingFailureDetail } from "./errors";
+import { setTmsMappingRecordIndex, TmsUpstreamError, type TmsMappingFailureDetail, type TmsMappingValueShape } from "./errors";
 import { MAX_HTTP_TEXT_BYTES } from "./limits";
 import {
   MAX_PUBLIC_DATE_LENGTH,
@@ -11,8 +11,14 @@ import {
 } from "./public-contracts";
 import type { LoadPublic } from "./types";
 
-function invalid(field: string, detail?: TmsMappingFailureDetail): never {
-  throw new TmsUpstreamError(`Load response contains invalid ${field} data.`, { category: "invalid-field", field, ...(detail === undefined ? {} : { detail }) });
+function invalid(field: string, detail?: TmsMappingFailureDetail, shape?: TmsMappingValueShape, observedLength?: number): never {
+  throw new TmsUpstreamError(`Load response contains invalid ${field} data.`, {
+    category: "invalid-field",
+    field,
+    ...(detail === undefined ? {} : { detail }),
+    ...(shape === undefined ? {} : { shape }),
+    ...(observedLength === undefined ? {} : { observedLength }),
+  });
 }
 
 function safeRequiredText(value: unknown, field: string): string {
@@ -35,14 +41,23 @@ function rate(value: unknown): number {
   return value;
 }
 
+function dateShape(value: string): TmsMappingValueShape {
+  if (/^\d{4}-\d{2}-\d{2}T/.test(value)) return "iso-datetime";
+  if (/^\d{4}-\d{2}-\d{2}(?:\s|$)/.test(value)) return "iso-date";
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(value)) return "slash-date";
+  if (/^\d{8}$/.test(value)) return "compact-date";
+  return "other";
+}
+
 function optionalDate(value: unknown): string | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "string") invalid("pickupDate", "non-string");
-  if (value.length === 0) invalid("pickupDate", "empty");
-  if (value.length !== MAX_PUBLIC_DATE_LENGTH) invalid("pickupDate", "length");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) invalid("pickupDate", "pattern");
+  const shape = dateShape(value);
+  if (value.length === 0) invalid("pickupDate", "empty", shape, 0);
+  if (value.length !== MAX_PUBLIC_DATE_LENGTH) invalid("pickupDate", "length", shape, value.length);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) invalid("pickupDate", "pattern", shape, value.length);
   const parsed = new Date(`${value}T00:00:00.000Z`);
-  if (Number.isNaN(parsed.valueOf()) || parsed.toISOString().slice(0, 10) !== value) invalid("pickupDate", "calendar");
+  if (Number.isNaN(parsed.valueOf()) || parsed.toISOString().slice(0, 10) !== value) invalid("pickupDate", "calendar", shape, value.length);
   return value;
 }
 

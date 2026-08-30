@@ -1,4 +1,4 @@
-import { isTmsAdapterError, type TmsMappingFailureDetail } from "./errors";
+import { isTmsAdapterError, type TmsMappingFailureDetail, type TmsMappingValueShape } from "./errors";
 
 export interface TmsLogContext {
   command: string;
@@ -22,6 +22,7 @@ const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,64}$/;
 const SAFE_MAPPING_CATEGORIES = new Set(["missing-field", "invalid-field", "duplicate-identity"]);
 const SAFE_MAPPING_FIELD = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
 const SAFE_MAPPING_DETAILS = new Set<TmsMappingFailureDetail>(["non-string", "empty", "length", "pattern", "calendar"]);
+const SAFE_MAPPING_SHAPES = new Set<TmsMappingValueShape>(["iso-date", "iso-datetime", "slash-date", "compact-date", "other"]);
 
 export function logTmsEvent(context: TmsLogContext): void {
   // Construct a closed, bounded event. Never forward the caller's object to the logger.
@@ -33,7 +34,7 @@ export function logTmsEvent(context: TmsLogContext): void {
     errorType: context.errorType && SAFE_ERROR_TYPES.has(context.errorType) ? context.errorType : undefined,
     recordCount: context.recordCount === undefined ? undefined : Math.min(128, Math.max(0, Math.floor(context.recordCount))),
   };
-  console.info("[tms]", safeContext);
+  console.info("[tms]", JSON.stringify(safeContext));
 }
 
 export function logTmsMappingFailure(context: {
@@ -45,12 +46,17 @@ export function logTmsMappingFailure(context: {
   const mapping = context.error.metadata.mapping;
   if (!mapping || !SAFE_MAPPING_CATEGORIES.has(mapping.category) || !SAFE_MAPPING_FIELD.test(mapping.field)) return;
 
-  console.warn("[tms-mapping]", {
+  const safeMapping = {
     operation: context.operation,
     requestId: REQUEST_ID_PATTERN.test(context.requestId) ? context.requestId : "invalid",
     recordIndex: mapping.recordIndex === undefined ? 0 : Math.min(128, Math.max(0, Math.floor(mapping.recordIndex))),
     category: mapping.category,
     field: mapping.field,
     ...(mapping.detail !== undefined && SAFE_MAPPING_DETAILS.has(mapping.detail) ? { detail: mapping.detail } : {}),
-  });
+    ...(mapping.shape !== undefined && SAFE_MAPPING_SHAPES.has(mapping.shape) ? { shape: mapping.shape } : {}),
+    ...(mapping.observedLength === undefined || !Number.isFinite(mapping.observedLength)
+      ? {}
+      : { observedLength: Math.min(256, Math.max(0, Math.floor(mapping.observedLength))) }),
+  };
+  console.warn("[tms-mapping]", JSON.stringify(safeMapping));
 }

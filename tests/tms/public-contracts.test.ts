@@ -50,6 +50,28 @@ describe("Phase 3B public contracts", () => {
     expect(() => toPublicLoadDetail(load({ pickupDate: "2026-02-30" }))).toThrow();
   });
 
+  it("diagnoses unsupported pickup date shapes without logging the value", () => {
+    let caught: unknown;
+    try {
+      toPublicLoadDetail(load({ pickupDate: "2026-01-15T00:00:00Z" }));
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toMatchObject({
+      metadata: {
+        mapping: {
+          category: "invalid-field",
+          field: "pickupDate",
+          detail: "length",
+          shape: "iso-datetime",
+          observedLength: 20,
+        },
+      },
+    });
+    expect(JSON.stringify(caught)).not.toContain("2026-01-15T00:00:00Z");
+  });
+
   it("sorts summaries deterministically, bounds results, and rejects duplicates", () => {
     const results = mapPublicLoadSummaries([load(), load({ loadId: "LOAD-1001", rate: 2450 })], 1);
     expect(results.map((item) => item.loadId)).toEqual(["LOAD-1001"]);

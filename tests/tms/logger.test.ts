@@ -17,14 +17,13 @@ describe("safe TMS logging", () => {
       recordCount: Number.MAX_VALUE,
     });
 
-    expect(info).toHaveBeenCalledWith("[tms]", {
+    expect(info).toHaveBeenCalledWith("[tms]", JSON.stringify({
       operation: "other",
       requestId: "safe-id",
       durationMs: 600000,
       outcome: "error",
-      errorType: undefined,
       recordCount: 128,
-    });
+    }));
     expect(JSON.stringify(info.mock.calls)).not.toContain("MC-12345");
   });
 
@@ -38,9 +37,7 @@ describe("safe TMS logging", () => {
       errorType: new TmsResponseIncompleteError().type,
     });
 
-    expect(info).toHaveBeenCalledWith("[tms]", expect.objectContaining({
-      operation: "search",
-      errorType: "TMS_RESPONSE_INCOMPLETE",
-    }));
+    expect(info).toHaveBeenCalledWith("[tms]", expect.stringContaining('"operation":"search"'));
+    expect(info.mock.calls[0]?.[1]).toContain('"errorType":"TMS_RESPONSE_INCOMPLETE"');
   });
 });

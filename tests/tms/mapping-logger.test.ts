@@ -15,13 +15,13 @@ describe("safe TMS mapping diagnostics", () => {
 
     logTmsMappingFailure({ operation: "search", requestId: "request-123", error });
 
-    expect(warning).toHaveBeenCalledWith("[tms-mapping]", {
+    expect(warning).toHaveBeenCalledWith("[tms-mapping]", JSON.stringify({
       operation: "search",
       requestId: "request-123",
       recordIndex: 2,
       category: "invalid-field",
       field: "rate",
-    });
+    }));
     expect(JSON.stringify(warning.mock.calls)).not.toContain("secret");
   });
 
@@ -48,9 +48,14 @@ describe("safe TMS mapping diagnostics", () => {
 
     logTmsMappingFailure({ operation: "search", requestId: "request-123", error });
 
-    expect(warning).toHaveBeenCalledWith("[tms-mapping]", expect.objectContaining({
+    expect(warning).toHaveBeenCalledWith("[tms-mapping]", JSON.stringify({
+      operation: "search",
+      requestId: "request-123",
+      recordIndex: 0,
+      category: "invalid-field",
       field: "pickupDate",
       detail: "pattern",
+      shape: undefined,
     }));
     expect(JSON.stringify(warning.mock.calls)).not.toContain("secret");
   });

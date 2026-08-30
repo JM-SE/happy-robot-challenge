@@ -14,12 +14,15 @@ export interface TmsErrorMetadata {
 
 export type TmsMappingFailureCategory = "missing-field" | "invalid-field" | "duplicate-identity";
 export type TmsMappingFailureDetail = "non-string" | "empty" | "length" | "pattern" | "calendar";
+export type TmsMappingValueShape = "iso-date" | "iso-datetime" | "slash-date" | "compact-date" | "other";
 
 export interface TmsMappingDiagnostic {
   category: TmsMappingFailureCategory;
   field: string;
   recordIndex?: number;
   detail?: TmsMappingFailureDetail;
+  shape?: TmsMappingValueShape;
+  observedLength?: number;
 }
 
 export class TmsAdapterError extends Error {
