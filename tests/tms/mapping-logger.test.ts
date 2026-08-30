@@ -37,4 +37,21 @@ describe("safe TMS mapping diagnostics", () => {
 
     expect(warning).not.toHaveBeenCalled();
   });
+
+  it("logs only an allowlisted structural detail", () => {
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const error = new TmsUpstreamError("internal value secret", {
+      category: "invalid-field",
+      field: "pickupDate",
+      detail: "pattern",
+    });
+
+    logTmsMappingFailure({ operation: "search", requestId: "request-123", error });
+
+    expect(warning).toHaveBeenCalledWith("[tms-mapping]", expect.objectContaining({
+      field: "pickupDate",
+      detail: "pattern",
+    }));
+    expect(JSON.stringify(warning.mock.calls)).not.toContain("secret");
+  });
 });

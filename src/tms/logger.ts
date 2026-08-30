@@ -1,4 +1,4 @@
-import { isTmsAdapterError } from "./errors";
+import { isTmsAdapterError, type TmsMappingFailureDetail } from "./errors";
 
 export interface TmsLogContext {
   command: string;
@@ -21,6 +21,7 @@ const SAFE_ERROR_TYPES = new Set(["TMS_TIMEOUT", "TMS_PROTOCOL", "TMS_CONNECTION
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,64}$/;
 const SAFE_MAPPING_CATEGORIES = new Set(["missing-field", "invalid-field", "duplicate-identity"]);
 const SAFE_MAPPING_FIELD = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
+const SAFE_MAPPING_DETAILS = new Set<TmsMappingFailureDetail>(["non-string", "empty", "length", "pattern", "calendar"]);
 
 export function logTmsEvent(context: TmsLogContext): void {
   // Construct a closed, bounded event. Never forward the caller's object to the logger.
@@ -50,5 +51,6 @@ export function logTmsMappingFailure(context: {
     recordIndex: mapping.recordIndex === undefined ? 0 : Math.min(128, Math.max(0, Math.floor(mapping.recordIndex))),
     category: mapping.category,
     field: mapping.field,
+    ...(mapping.detail !== undefined && SAFE_MAPPING_DETAILS.has(mapping.detail) ? { detail: mapping.detail } : {}),
   });
 }

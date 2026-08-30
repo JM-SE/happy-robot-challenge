@@ -13,11 +13,13 @@ export interface TmsErrorMetadata {
 }
 
 export type TmsMappingFailureCategory = "missing-field" | "invalid-field" | "duplicate-identity";
+export type TmsMappingFailureDetail = "non-string" | "empty" | "length" | "pattern" | "calendar";
 
 export interface TmsMappingDiagnostic {
   category: TmsMappingFailureCategory;
   field: string;
   recordIndex?: number;
+  detail?: TmsMappingFailureDetail;
 }
 
 export class TmsAdapterError extends Error {
