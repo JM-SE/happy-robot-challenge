@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { TmsResponseIncompleteError } from "../../src/tms/errors";
 import { logTmsEvent } from "../../src/tms/logger";
 
 describe("safe TMS logging", () => {
@@ -25,5 +26,21 @@ describe("safe TMS logging", () => {
       recordCount: 128,
     });
     expect(JSON.stringify(info.mock.calls)).not.toContain("MC-12345");
+  });
+
+  it("preserves the safe incomplete-response classification", () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    logTmsEvent({
+      command: "LOAD_QUERY",
+      requestId: "safe-id",
+      durationMs: 334,
+      outcome: "error",
+      errorType: new TmsResponseIncompleteError().type,
+    });
+
+    expect(info).toHaveBeenCalledWith("[tms]", expect.objectContaining({
+      operation: "search",
+      errorType: "TMS_RESPONSE_INCOMPLETE",
+    }));
   });
 });

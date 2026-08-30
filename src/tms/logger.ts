@@ -17,7 +17,7 @@ const OPERATION_BY_COMMAND: Record<string, string> = {
   LOAD_BOOK: "book",
 };
 
-const SAFE_ERROR_TYPES = new Set(["TMS_TIMEOUT", "TMS_PROTOCOL", "TMS_CONNECTION", "TMS_REMOTE", "TMS_UPSTREAM"]);
+const SAFE_ERROR_TYPES = new Set(["TMS_TIMEOUT", "TMS_PROTOCOL", "TMS_CONNECTION", "TMS_RESPONSE_INCOMPLETE", "TMS_REMOTE", "TMS_UPSTREAM"]);
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,64}$/;
 const SAFE_MAPPING_CATEGORIES = new Set(["missing-field", "invalid-field", "duplicate-identity"]);
 const SAFE_MAPPING_FIELD = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
