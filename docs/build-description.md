@@ -7,7 +7,7 @@ Carrier-sales staff need a controlled way to find loads, verify carrier informat
 ## Proposed workflow
 
 1. The implemented and connected HappyRobot App, including Web Call and Inbound Voice Agent surfaces, gathers carrier and load information; those surfaces are **IMPLEMENTED — NOT CURRENTLY VERIFIED** because provider smoke evidence is not recorded.
-2. FMCSA and OTP handoffs are expected to verify carrier and compliance; unavailable here.
+2. The HappyRobot App initiates FMCSA validation through a direct App request and owns that capability; the adapter consumes only a trusted, fresh, identity-bound validation result for any controlled real booking flow. OTP handoffs remain unavailable here.
 3. The adapter accepts authenticated, validated load search/detail requests.
 4. It reads from a local mock or guarded read-only TMS TCP path.
 5. Negotiation and booking remain controlled handoffs. Mock booking is deterministic; real booking is disabled.
@@ -23,7 +23,7 @@ The caller sends a closed JSON request to the authenticated adapter route. The r
 
 ## Carrier verification
 
-Carrier verification through FMCSA is **OUT OF SCOPE** for this build. No live FMCSA provider, consent flow, or verification result is claimed.
+FMCSA validation is in scope of the HappyRobot App and is initiated through a direct App request. It is not implemented or owned by the TMS adapter. The adapter only depends on a reliable, fresh, identity-bound FMCSA validation result for any controlled real booking flow; it must not simulate FMCSA validation or accept an MC-format string as proof. Current validation is **IMPLEMENTED — NOT CURRENTLY VERIFIED**: no successful FMCSA result was captured for MC 872144, so the controlled real process remains blocked. This is a verification/evidence limitation, not a determination that MC 872144 is invalid.
 
 ## OTP compliance behavior
 
@@ -67,8 +67,8 @@ The Docker image is used by a Railway service deployed by user confirmation as a
 
 ## Operational limitations
 
-Real read-only endpoint behavior has status **IMPLEMENTED — CURRENTLY UNDER INVESTIGATION**. There is no approved real load ID, real booking is disabled, no real-booking rollback/reconciliation procedure, no OTP delivery, no Twin capacity, and no durable operations store. HappyRobot App, Web Call, and Inbound Voice Agent are deployed/complete and connected by user confirmation; remaining contract/mapping questions, external provider smoke evidence, and full business-capability evidence are unrecorded. The Operations UI fallback/demo data is not evidence of external integration.
+Real read-only endpoint behavior has status **IMPLEMENTED — CURRENTLY UNDER INVESTIGATION**. There is no approved real load ID, real booking is disabled, no real-booking rollback/reconciliation procedure, no OTP delivery, no Twin capacity, and no durable operations store. HappyRobot App, Web Call, and Inbound Voice Agent are deployed/complete and connected by user confirmation; FMCSA validation is App-owned and **IMPLEMENTED — NOT CURRENTLY VERIFIED** because no successful result was captured for MC 872144. Remaining contract/mapping questions, external provider smoke evidence, and full business-capability evidence are unrecorded. The Operations UI fallback/demo data is not evidence of external integration.
 
 ## Future production requirements
 
-Future production requirements include approved real-TMS read-only evidence, HappyRobot smoke tests, FMCSA and OTP providers, Twin capacity, an approved negotiation and reconciliation procedure, durable storage, observability, approved transport security, Railway verification, and explicit authorization before any real booking capability.
+Future production requirements include approved real-TMS read-only evidence, HappyRobot smoke tests, a recorded FMCSA result from the App with consent/auditability, freshness and carrier/session identity binding for the controlled handoff, OTP providers, Twin capacity, an approved negotiation and reconciliation procedure, durable storage, observability, approved transport security, Railway verification, and explicit authorization before any real booking capability.
