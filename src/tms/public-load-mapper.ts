@@ -45,6 +45,7 @@ function dateShape(value: string): TmsMappingValueShape {
   if (/^\d{4}-\d{2}-\d{2}T/.test(value)) return "iso-datetime";
   if (/^\d{4}-\d{2}-\d{2}(?:\s|$)/.test(value)) return "iso-date";
   if (/^\d{2}\/\d{2}\/\d{4}$/.test(value)) return "slash-date";
+  if (/^\d{14}$/.test(value)) return "compact-datetime";
   if (/^\d{8}$/.test(value)) return "compact-date";
   return "other";
 }

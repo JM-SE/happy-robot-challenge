@@ -22,7 +22,7 @@ const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,64}$/;
 const SAFE_MAPPING_CATEGORIES = new Set(["missing-field", "invalid-field", "duplicate-identity"]);
 const SAFE_MAPPING_FIELD = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
 const SAFE_MAPPING_DETAILS = new Set<TmsMappingFailureDetail>(["non-string", "empty", "length", "pattern", "calendar"]);
-const SAFE_MAPPING_SHAPES = new Set<TmsMappingValueShape>(["iso-date", "iso-datetime", "slash-date", "compact-date", "other"]);
+const SAFE_MAPPING_SHAPES = new Set<TmsMappingValueShape>(["iso-date", "iso-datetime", "slash-date", "compact-date", "compact-datetime", "other"]);
 
 export function logTmsEvent(context: TmsLogContext): void {
   // Construct a closed, bounded event. Never forward the caller's object to the logger.

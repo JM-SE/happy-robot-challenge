@@ -14,7 +14,7 @@ export interface TmsErrorMetadata {
 
 export type TmsMappingFailureCategory = "missing-field" | "invalid-field" | "duplicate-identity";
 export type TmsMappingFailureDetail = "non-string" | "empty" | "length" | "pattern" | "calendar";
-export type TmsMappingValueShape = "iso-date" | "iso-datetime" | "slash-date" | "compact-date" | "other";
+export type TmsMappingValueShape = "iso-date" | "iso-datetime" | "slash-date" | "compact-date" | "compact-datetime" | "other";
 
 export interface TmsMappingDiagnostic {
   category: TmsMappingFailureCategory;
