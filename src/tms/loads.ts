@@ -115,7 +115,7 @@ export function toLoadDetailFields(input: LoadDetailInput): Record<string, strin
 export function recordToPublicLoad(record: TmsRecord): LoadPublic {
   const fields = record.fields;
   const rate = Number(requiredField(fields, "RATE"));
-  if (!Number.isFinite(rate)) throw new TmsUpstreamError("Load response contains invalid rate data.");
+  if (!Number.isFinite(rate)) throw new TmsUpstreamError("Load response contains invalid rate data.", { category: "invalid-field", field: "rate" });
   const miles = optionalFiniteNumber(fields.MILES);
   return {
     loadId: requiredField(fields, "LOAD_ID"),
@@ -134,7 +134,7 @@ export function recordToPublicLoad(record: TmsRecord): LoadPublic {
 
 function requiredField(fields: Record<string, string>, name: string): string {
   const value = fields[name];
-  if (value === undefined || !value) throw new TmsUpstreamError(`Load response is missing ${name}.`);
+  if (value === undefined || !value) throw new TmsUpstreamError(`Load response is missing ${name}.`, { category: "missing-field", field: name });
   return value;
 }
 

@@ -1,4 +1,4 @@
-import { TmsUpstreamError } from "./errors";
+import { setTmsMappingRecordIndex, TmsUpstreamError } from "./errors";
 import { MAX_HTTP_TEXT_BYTES } from "./limits";
 import {
   MAX_PUBLIC_DATE_LENGTH,
@@ -12,7 +12,7 @@ import {
 import type { LoadPublic } from "./types";
 
 function invalid(field: string): never {
-  throw new TmsUpstreamError(`Load response contains invalid ${field} data.`);
+  throw new TmsUpstreamError(`Load response contains invalid ${field} data.`, { category: "invalid-field", field });
 }
 
 function safeRequiredText(value: unknown, field: string): string {
@@ -95,10 +95,20 @@ export function toPublicLoadDetail(load: LoadPublic): PublicLoadDetail {
 }
 
 export function mapPublicLoadSummaries(loads: readonly LoadPublic[], maxResults: number): PublicLoadSummary[] {
-  const mapped = loads.map(toPublicLoadSummary);
+  const mapped = loads.map((load, recordIndex) => {
+    try {
+      return toPublicLoadSummary(load);
+    } catch (error) {
+      setTmsMappingRecordIndex(error, recordIndex);
+      throw error;
+    }
+  });
   const ids = new Set<string>();
-  for (const load of mapped) {
-    if (ids.has(load.loadId)) invalid("duplicate load identity");
+  for (let recordIndex = 0; recordIndex < mapped.length; recordIndex += 1) {
+    const load = mapped[recordIndex]!;
+    if (ids.has(load.loadId)) {
+      throw new TmsUpstreamError("Load response contains duplicate load identity data.", { category: "duplicate-identity", field: "loadId", recordIndex });
+    }
     ids.add(load.loadId);
   }
   return [...mapped].sort((left, right) => left.loadId.localeCompare(right.loadId)).slice(0, maxResults);

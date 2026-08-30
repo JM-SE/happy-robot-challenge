@@ -1,13 +1,14 @@
 import "server-only";
 import { getAdapterConfig } from "./adapter-config";
 import { getTmsConfig } from "./config-core";
-import { TmsConfigurationError } from "./errors";
+import { setTmsMappingRecordIndex, TmsConfigurationError } from "./errors";
 import { admitTmsRequest } from "./http-controls";
 import { MAX_TMS_DEADLINE_MS } from "./limits";
 import { REAL_2B_COMMAND_POLICY } from "./policy";
 import { createReadOnlyTcpTargetAuthority } from "./target-authority";
 import { TmsClient } from "./client";
 import { responseToEchoResult } from "./echo";
+import { logTmsMappingFailure } from "./logger";
 import { getLoad, searchLoads } from "./service";
 import { mapPublicLoadSummaries, toPublicLoadDetail } from "./public-load-mapper";
 import type { EchoResult, LoadDetailInput } from "./types";
@@ -54,12 +55,23 @@ export async function executeHttpEcho(input: { message: string }, requestId: str
   return responseToEchoResult(response);
 }
 
-export async function executeHttpSearch(input: PublicSearchRequest) {
-  const loads = await searchLoads(input, createServerTmsClient());
-  return { loads: mapPublicLoadSummaries(loads, input.maxResults) };
+export async function executeHttpSearch(input: PublicSearchRequest, requestId: string) {
+  try {
+    const loads = await searchLoads(input, createServerTmsClient(), requestId);
+    return { loads: mapPublicLoadSummaries(loads, input.maxResults) };
+  } catch (error) {
+    logTmsMappingFailure({ operation: "search", requestId, error });
+    throw error;
+  }
 }
 
-export async function executeHttpDetail(input: LoadDetailInput) {
-  const load = await getLoad(input, createServerTmsClient());
-  return { load: toPublicLoadDetail(load) };
+export async function executeHttpDetail(input: LoadDetailInput, requestId: string) {
+  try {
+    const load = await getLoad(input, createServerTmsClient(), requestId);
+    return { load: toPublicLoadDetail(load) };
+  } catch (error) {
+    setTmsMappingRecordIndex(error, 0);
+    logTmsMappingFailure({ operation: "detail", requestId, error });
+    throw error;
+  }
 }

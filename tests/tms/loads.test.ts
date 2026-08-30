@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { filterReturnedLoadsByPickupDate } from "../../src/tms/controlled-booking";
 import { parseLoadDetailInput, parseLoadQueryInput, recordToLoadInternal, recordToPublicLoad, toLoadDetailFields, toLoadQueryFields, toPublicLoad } from "../../src/tms/loads";
+import { searchLoads } from "../../src/tms/service";
 
 describe("load DTOs and mappings", () => {
   it("normalizes search fields and maps them to the LTMS names", () => {
@@ -69,6 +70,23 @@ describe("load DTOs and mappings", () => {
       notes: "",
     });
     expect(publicLoad).not.toHaveProperty("maxBuy");
+  });
+
+  it("attaches a safe field diagnostic and record index when a query record cannot be mapped", async () => {
+    const validFields = {
+      LOAD_ID: "LOAD-REAL",
+      ORIG_STATE: "TX",
+      DEST_STATE: "CA",
+      ORIG_CITY: "Dallas",
+      DEST_CITY: "Los Angeles",
+      EQTYPE: "DRY_VAN",
+      RATE: "2450",
+    };
+
+    await expect(searchLoads(
+      { originState: "TX" },
+      { execute: async () => ({ records: [{ fields: validFields }, { fields: { ...validFields, RATE: "not-a-rate" } }], rawBytes: 1 }) },
+    )).rejects.toMatchObject({ metadata: { mapping: { category: "invalid-field", field: "rate", recordIndex: 1 } } });
   });
 
   it("maps optional operational fields and omits invalid optional miles", () => {

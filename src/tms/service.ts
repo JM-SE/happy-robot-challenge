@@ -1,4 +1,4 @@
-import { TmsRemoteError, TmsUpstreamError } from "./errors";
+import { setTmsMappingRecordIndex, TmsRemoteError, TmsUpstreamError } from "./errors";
 import { recordToPublicLoad, toLoadDetailFields, toLoadQueryFields } from "./loads";
 import type { LoadDetailInput, LoadPublic, LoadQueryInput, TmsCommandRequest, TmsParsedResponse } from "./types";
 
@@ -13,14 +13,26 @@ function requireSingleRecord(response: TmsParsedResponse, operation: string) {
   return response.records[0]!;
 }
 
-export async function searchLoads(input: LoadQueryInput, port: LoadTmsPort): Promise<LoadPublic[]> {
-  const response = await port.execute({ command: "LOAD_QUERY", fields: toLoadQueryFields(input) });
-  return response.records.map(recordToPublicLoad);
+export async function searchLoads(input: LoadQueryInput, port: LoadTmsPort, requestId?: string): Promise<LoadPublic[]> {
+  const response = await port.execute({ command: "LOAD_QUERY", fields: toLoadQueryFields(input), ...(requestId === undefined ? {} : { requestId }) });
+  return response.records.map((record, recordIndex) => {
+    try {
+      return recordToPublicLoad(record);
+    } catch (error) {
+      setTmsMappingRecordIndex(error, recordIndex);
+      throw error;
+    }
+  });
 }
 
-export async function getLoad(input: LoadDetailInput, port: LoadTmsPort): Promise<LoadPublic> {
-  const response = await port.execute({ command: "LOAD_GET", fields: toLoadDetailFields(input) });
+export async function getLoad(input: LoadDetailInput, port: LoadTmsPort, requestId?: string): Promise<LoadPublic> {
+  const response = await port.execute({ command: "LOAD_GET", fields: toLoadDetailFields(input), ...(requestId === undefined ? {} : { requestId }) });
   if (!response.records.length) throw new TmsRemoteError("UNKNOWN_LOAD", "Load was not found.");
   const record = requireSingleRecord(response, "LOAD_GET");
-  return recordToPublicLoad(record);
+  try {
+    return recordToPublicLoad(record);
+  } catch (error) {
+    setTmsMappingRecordIndex(error, 0);
+    throw error;
+  }
 }

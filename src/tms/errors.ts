@@ -9,6 +9,15 @@ export interface TmsErrorMetadata {
   writeAttempted?: boolean;
   writeDisposition?: TmsWriteDisposition;
   retryAfterMs?: number;
+  mapping?: TmsMappingDiagnostic;
+}
+
+export type TmsMappingFailureCategory = "missing-field" | "invalid-field" | "duplicate-identity";
+
+export interface TmsMappingDiagnostic {
+  category: TmsMappingFailureCategory;
+  field: string;
+  recordIndex?: number;
 }
 
 export class TmsAdapterError extends Error {
@@ -67,13 +76,14 @@ export class TmsConcurrencyError extends TmsAdapterError {
 }
 
 export class TmsUpstreamError extends TmsAdapterError {
-  constructor(message: string) {
+  constructor(message: string, mapping?: TmsMappingDiagnostic) {
     super({
       type: "TMS_UPSTREAM",
       code: "UPSTREAM_RESPONSE_INVALID",
       message,
       retryable: false,
       stage: "response",
+      metadata: mapping === undefined ? undefined : { mapping },
     });
   }
 }
@@ -130,6 +140,12 @@ export class TmsRemoteError extends TmsAdapterError {
       metadata: { remoteCode: safeCode },
     });
     this.remoteCode = safeCode;
+  }
+}
+
+export function setTmsMappingRecordIndex(error: unknown, recordIndex: number): void {
+  if (error instanceof TmsUpstreamError && error.metadata.mapping && error.metadata.mapping.recordIndex === undefined) {
+    error.metadata.mapping.recordIndex = recordIndex;
   }
 }
 
