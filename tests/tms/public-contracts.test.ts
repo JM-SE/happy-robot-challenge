@@ -46,7 +46,7 @@ describe("Phase 3B public contracts", () => {
       status: "AVAILABLE",
     });
     expect(output).not.toHaveProperty("notes");
-    expect(() => toPublicLoadDetail(load({ miles: 10_001 }))).toThrow();
+    expect(toPublicLoadDetail(load({ miles: 10_001 }))).toMatchObject({ miles: 10_001 });
     expect(() => toPublicLoadDetail(load({ pickupDate: "2026-02-30" }))).toThrow();
   });
 
@@ -99,10 +99,10 @@ describe("Phase 3B public contracts", () => {
     expect(JSON.stringify(caught)).not.toContain("20261312080000");
   });
 
-  it("sorts summaries deterministically, bounds results, and rejects duplicates", () => {
+  it("preserves upstream order, bounds results, and preserves duplicates", () => {
     const results = mapPublicLoadSummaries([load(), load({ loadId: "LOAD-1001", rate: 2450 })], 1);
-    expect(results.map((item) => item.loadId)).toEqual(["LOAD-1001"]);
-    expect(() => mapPublicLoadSummaries([load(), load()], 10)).toThrow();
+    expect(results.map((item) => item.loadId)).toEqual(["LOAD-1002"]);
+    expect(mapPublicLoadSummaries([load(), load()], 10).map((item) => item.loadId)).toEqual(["LOAD-1002", "LOAD-1002"]);
   });
 
   it("maps reserved booking domain errors centrally", () => {

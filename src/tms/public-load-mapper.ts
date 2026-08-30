@@ -2,14 +2,11 @@ import { setTmsMappingRecordIndex, TmsUpstreamError, type TmsMappingFailureDetai
 import { MAX_HTTP_TEXT_BYTES } from "./limits";
 import {
   MAX_PUBLIC_DATE_LENGTH,
-  MAX_PUBLIC_MILES,
-  MAX_PUBLIC_RATE,
-  PUBLIC_LOAD_STATUSES,
   type PublicLoadDetail,
   type PublicLoadStatus,
   type PublicLoadSummary,
 } from "./public-contracts";
-import type { LoadPublic } from "./types";
+import type { LoadPublic, NormalizedLoad } from "./types";
 
 function invalid(field: string, detail?: TmsMappingFailureDetail, shape?: TmsMappingValueShape, observedLength?: number): never {
   throw new TmsUpstreamError(`Load response contains invalid ${field} data.`, {
@@ -37,7 +34,7 @@ function equipment(value: unknown): string {
 }
 
 function rate(value: unknown): number {
-  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0 || value > MAX_PUBLIC_RATE) invalid("rate");
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) invalid("rate");
   return value;
 }
 
@@ -70,6 +67,7 @@ function compactDatetimeDate(value: string): string {
 function optionalDate(value: unknown): string | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "string") invalid("pickupDate", "non-string");
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(value)) return value.slice(0, 10);
   const shape = dateShape(value);
   if (value.length === 0) invalid("pickupDate", "empty", shape, 0);
   if (shape === "compact-datetime") return compactDatetimeDate(value);
@@ -82,17 +80,17 @@ function optionalDate(value: unknown): string | undefined {
 
 function optionalMiles(value: unknown): number | undefined {
   if (value === undefined) return undefined;
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > MAX_PUBLIC_MILES) invalid("miles");
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) invalid("miles");
   return value;
 }
 
 function optionalStatus(value: unknown): PublicLoadStatus | undefined {
   if (value === undefined) return undefined;
-  if (value !== PUBLIC_LOAD_STATUSES.AVAILABLE && value !== PUBLIC_LOAD_STATUSES.BOOKED) invalid("status");
+  if (typeof value !== "string" || value.length === 0 || value.length > 64 || /[|\r\n\u0000-\u001f\u007f]/.test(value)) invalid("status");
   return value;
 }
 
-function mapLoad(load: LoadPublic): PublicLoadSummary {
+function mapLoad(load: NormalizedLoad | LoadPublic): PublicLoadSummary {
   const mapped: PublicLoadSummary = {
     loadId: safeRequiredText(load.loadId, "loadId"),
     originState: state(load.originState, "originState"),
@@ -111,11 +109,11 @@ function mapLoad(load: LoadPublic): PublicLoadSummary {
   return mapped;
 }
 
-export function toPublicLoadSummary(load: LoadPublic): PublicLoadSummary {
+export function toPublicLoadSummary(load: NormalizedLoad | LoadPublic): PublicLoadSummary {
   return mapLoad(load);
 }
 
-export function toPublicLoadDetail(load: LoadPublic): PublicLoadDetail {
+export function toPublicLoadDetail(load: NormalizedLoad | LoadPublic): PublicLoadDetail {
   const summary = mapLoad(load);
   return {
     loadId: summary.loadId,
@@ -131,7 +129,7 @@ export function toPublicLoadDetail(load: LoadPublic): PublicLoadDetail {
   };
 }
 
-export function mapPublicLoadSummaries(loads: readonly LoadPublic[], maxResults: number): PublicLoadSummary[] {
+export function mapPublicLoadSummaries(loads: readonly (NormalizedLoad | LoadPublic)[], maxResults: number): PublicLoadSummary[] {
   const mapped = loads.map((load, recordIndex) => {
     try {
       return toPublicLoadSummary(load);
@@ -140,13 +138,5 @@ export function mapPublicLoadSummaries(loads: readonly LoadPublic[], maxResults:
       throw error;
     }
   });
-  const ids = new Set<string>();
-  for (let recordIndex = 0; recordIndex < mapped.length; recordIndex += 1) {
-    const load = mapped[recordIndex]!;
-    if (ids.has(load.loadId)) {
-      throw new TmsUpstreamError("Load response contains duplicate load identity data.", { category: "duplicate-identity", field: "loadId", recordIndex });
-    }
-    ids.add(load.loadId);
-  }
-  return [...mapped].sort((left, right) => left.loadId.localeCompare(right.loadId)).slice(0, maxResults);
+  return mapped.slice(0, maxResults);
 }

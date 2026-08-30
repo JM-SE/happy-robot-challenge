@@ -100,15 +100,16 @@ describe("load DTOs and mappings", () => {
         DEST_CITY: "Los Angeles",
         EQTYPE: "DRY_VAN",
         RATE: "2450",
-        PICKUP_DT: "2026-09-01",
-        MILES: "not-a-number",
-        STATUS: "AVAILABLE",
+         PICKUP_DT: "20260901080000",
+         MILES: "not-a-number",
+         STATUS: "OPEN",
       },
     };
 
-    expect(recordToPublicLoad(record)).toMatchObject({ pickupDate: "2026-09-01", status: "AVAILABLE" });
-    expect(recordToPublicLoad(record)).not.toHaveProperty("miles");
-    expect(recordToLoadInternal(record)).not.toHaveProperty("maxBuy");
+    expect(() => recordToPublicLoad(record)).toThrow();
+    const validRecord = { ...record, fields: { ...record.fields, MILES: "42" } };
+    expect(recordToPublicLoad(validRecord)).toMatchObject({ pickupDate: "2026-09-01T08:00:00", status: "OPEN", miles: 42 });
+    expect(() => recordToLoadInternal(record)).toThrow();
   });
 
   it("rejects oversized query text before framing", () => {

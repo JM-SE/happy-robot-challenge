@@ -6,12 +6,15 @@ export const MAX_PUBLIC_MILES = 10_000;
 export const MAX_PUBLIC_DATE_LENGTH = 10;
 export const MAX_PUBLIC_MC_LENGTH = 64;
 
+export const MAX_TMS_STATUS_LENGTH = 64;
+
 const PUBLIC_LOAD_STATUSES = {
   AVAILABLE: "AVAILABLE",
+  OPEN: "OPEN",
   BOOKED: "BOOKED",
 } as const;
 
-export type PublicLoadStatus = (typeof PUBLIC_LOAD_STATUSES)[keyof typeof PUBLIC_LOAD_STATUSES];
+export type PublicLoadStatus = string;
 
 export interface PublicSearchRequest {
   originState?: string;

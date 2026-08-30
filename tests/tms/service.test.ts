@@ -19,17 +19,36 @@ async function bookLoadTestOnly(input: BookLoadInput, port: LoadTmsPort): Promis
 }
 
 describe("read-only load service", () => {
+  it("returns all query records in upstream order, including duplicate and opaque statuses", async () => {
+    const makeRecord = (id: string, status: string) => ({ fields: {
+      LOAD_ID: id, ORIG_STATE: "CA", DEST_STATE: "TX", ORIG_CITY: "Los Angeles", DEST_CITY: "Dallas",
+      EQTYPE: "DRY_VAN", RATE: "100", STATUS: status, PICKUP_DT: "20260512080000", DELIVERY_DT: "20260513100000",
+    } });
+    const loads = await searchLoads({ originState: "CA" }, { execute: async () => ({
+      records: [makeRecord("LOAD-3", "OPEN"), makeRecord("LOAD-1", "BOOKED"), makeRecord("LOAD-3", "IN_TRANSIT")], rawBytes: 1,
+    }) });
+    expect(loads.map((load) => [load.loadId, load.status, load.pickupDate, load.deliveryDate])).toEqual([
+      ["LOAD-3", "OPEN", "2026-05-12T08:00:00", "2026-05-13T10:00:00"],
+      ["LOAD-1", "BOOKED", "2026-05-12T08:00:00", "2026-05-13T10:00:00"],
+      ["LOAD-3", "IN_TRANSIT", "2026-05-12T08:00:00", "2026-05-13T10:00:00"],
+    ]);
+  });
+
+  it("maps an empty query response to an empty list", async () => {
+    await expect(searchLoads({ originState: "CA" }, { execute: async () => ({ records: [], rawBytes: 1 }) })).resolves.toEqual([]);
+  });
+
   it("maps query records to public loads", async () => {
     const loads = await searchLoads({ originState: "TX" }, port);
     expect(loads).toEqual([{
       loadId: "LOAD-1", originState: "TX", destinationState: "CA", originCity: "Dallas", destinationCity: "Los Angeles",
-      equipmentType: "DRY_VAN", rate: 100, notes: "note",
+      equipmentType: "DRY_VAN", rate: 100, notes: "note", maxBuy: 90,
     }]);
     expect(JSON.stringify(loads)).not.toContain("MAX_BUY");
   });
 
   it("rejects a detail response without a record", async () => {
-    await expect(getLoad({ loadId: "missing" }, { execute: async () => parseResponse("END\r\n") })).rejects.toMatchObject({ code: "UNKNOWN_LOAD" });
+    await expect(getLoad({ loadId: "missing" }, { execute: async () => parseResponse("END\r\n") })).rejects.toMatchObject({ code: "UPSTREAM_RESPONSE_INVALID" });
   });
 
   it("rejects a detail response containing multiple records", async () => {

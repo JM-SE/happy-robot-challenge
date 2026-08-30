@@ -88,7 +88,7 @@ export interface LoadDetailInput {
   loadId: string;
 }
 
-export interface LoadInternal {
+export interface NormalizedLoad {
   loadId: string;
   originState: string;
   destinationState: string;
@@ -98,12 +98,18 @@ export interface LoadInternal {
   rate: number;
   notes: string;
   pickupDate?: string;
+  deliveryDate?: string;
   miles?: number;
   status?: string;
+  /** Valid upstream fields not currently projected into the public DTO. */
+  opaqueFields?: Readonly<Record<string, string>>;
   /** Internal policy data; it must never cross the public HTTP boundary. */
   maxBuy?: number;
 }
 
+/** @deprecated Use NormalizedLoad internally and public-contract DTOs at HTTP boundaries. */
+export type LoadInternal = NormalizedLoad;
+/** @deprecated Compatibility alias; public HTTP DTOs are defined in public-contracts.ts. */
 export interface LoadPublic {
   loadId: string;
   originState: string;

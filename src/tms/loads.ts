@@ -1,6 +1,7 @@
-import { TmsUpstreamError, TmsValidationError } from "./errors";
+import { TmsValidationError } from "./errors";
 import { MAX_HTTP_TEXT_BYTES } from "./limits";
-import type { LoadDetailInput, LoadInternal, LoadPublic, LoadQueryInput, TmsRecord } from "./types";
+import { normalizeLoadRecord } from "./load-normalizer";
+import type { LoadDetailInput, LoadInternal, LoadPublic, LoadQueryInput, NormalizedLoad, TmsRecord } from "./types";
 
 export const MAX_RESULTS_LIMIT = 50;
 
@@ -112,62 +113,18 @@ export function toLoadDetailFields(input: LoadDetailInput): Record<string, strin
   return { LOAD_ID: input.loadId };
 }
 
-export function recordToPublicLoad(record: TmsRecord): LoadPublic {
-  const fields = record.fields;
-  const rate = Number(requiredField(fields, "RATE"));
-  if (!Number.isFinite(rate)) throw new TmsUpstreamError("Load response contains invalid rate data.", { category: "invalid-field", field: "rate" });
-  const miles = optionalFiniteNumber(fields.MILES);
-  return {
-    loadId: requiredField(fields, "LOAD_ID"),
-    originState: requiredField(fields, "ORIG_STATE"),
-    destinationState: requiredField(fields, "DEST_STATE"),
-    originCity: requiredField(fields, "ORIG_CITY"),
-    destinationCity: requiredField(fields, "DEST_CITY"),
-    equipmentType: requiredField(fields, "EQTYPE"),
-    rate,
-    notes: fields.NOTES ?? "",
-    ...(fields.PICKUP_DT !== undefined ? { pickupDate: fields.PICKUP_DT } : {}),
-    ...(miles !== undefined ? { miles } : {}),
-    ...(fields.STATUS !== undefined ? { status: fields.STATUS } : {}),
-  };
-}
-
-function requiredField(fields: Record<string, string>, name: string): string {
-  const value = fields[name];
-  if (value === undefined || !value) throw new TmsUpstreamError(`Load response is missing ${name}.`, { category: "missing-field", field: name });
-  return value;
+export function recordToPublicLoad(record: TmsRecord): NormalizedLoad {
+  return normalizeLoadRecord(record);
 }
 
 export function recordToLoadInternal(record: TmsRecord): LoadInternal {
-  const fields = record.fields;
-  const rate = Number(requiredField(fields, "RATE"));
-  const maxBuy = fields.MAX_BUY === undefined ? undefined : Number(fields.MAX_BUY);
-  if (!Number.isFinite(rate) || (maxBuy !== undefined && !Number.isFinite(maxBuy))) throw new TmsUpstreamError("Load response contains invalid rate data.");
-  const miles = optionalFiniteNumber(fields.MILES);
-  return {
-    loadId: requiredField(fields, "LOAD_ID"),
-    originState: requiredField(fields, "ORIG_STATE"),
-    destinationState: requiredField(fields, "DEST_STATE"),
-    originCity: requiredField(fields, "ORIG_CITY"),
-    destinationCity: requiredField(fields, "DEST_CITY"),
-    equipmentType: requiredField(fields, "EQTYPE"),
-    rate,
-    notes: fields.NOTES ?? "",
-    ...(maxBuy !== undefined ? { maxBuy } : {}),
-    ...(fields.PICKUP_DT !== undefined ? { pickupDate: fields.PICKUP_DT } : {}),
-    ...(miles !== undefined ? { miles } : {}),
-    ...(fields.STATUS !== undefined ? { status: fields.STATUS } : {}),
-  };
-}
-
-function optionalFiniteNumber(value: string | undefined): number | undefined {
-  if (value === undefined || value.trim() === "") return undefined;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+  return normalizeLoadRecord(record);
 }
 
 export function toPublicLoad(load: LoadInternal): LoadPublic {
-  const { maxBuy, ...publicLoad } = load;
+  const { maxBuy, opaqueFields, deliveryDate, ...publicLoad } = load;
   void maxBuy;
+  void opaqueFields;
+  void deliveryDate;
   return publicLoad;
 }

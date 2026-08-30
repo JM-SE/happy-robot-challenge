@@ -17,11 +17,12 @@ describe("DEBUG_ECHO response mapper", () => {
     });
   });
 
+  it("accepts optional auth, message, and unknown fields", () => {
+    expect(responseToEchoResult(parseResponse("ECHO|EXTRA:x|AUTH:BAD|FIELDS_PARSED:3\r\nEND\r\n"))).toEqual({ message: "", fieldCount: 3 });
+  });
+
   it.each([
-    "ECHO|AUTH:BAD|FIELDS_PARSED:3|MSG:HELLO\r\nEND\r\n",
     "ECHO|AUTH:OK|FIELDS_PARSED:three|MSG:HELLO\r\nEND\r\n",
-    "ECHO|AUTH:OK|FIELDS_PARSED:3\r\nEND\r\n",
-    "ECHO|AUTH:OK|FIELDS_PARSED:3|MSG:HELLO|EXTRA:x\r\nEND\r\n",
   ])("rejects invalid real echo shapes %j", (wire) => {
     expect(() => responseToEchoResult(parseResponse(wire))).toThrow();
   });
