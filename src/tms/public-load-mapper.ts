@@ -50,11 +50,29 @@ function dateShape(value: string): TmsMappingValueShape {
   return "other";
 }
 
+function compactDatetimeDate(value: string): string {
+  const year = value.slice(0, 4);
+  const month = value.slice(4, 6);
+  const day = value.slice(6, 8);
+  const hours = value.slice(8, 10);
+  const minutes = value.slice(10, 12);
+  const seconds = value.slice(12, 14);
+  const isoDatetime = `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.000Z`;
+  const parsed = new Date(isoDatetime);
+
+  if (Number.isNaN(parsed.valueOf()) || parsed.toISOString() !== isoDatetime) {
+    invalid("pickupDate", "calendar", "compact-datetime", value.length);
+  }
+
+  return `${year}-${month}-${day}`;
+}
+
 function optionalDate(value: unknown): string | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "string") invalid("pickupDate", "non-string");
   const shape = dateShape(value);
   if (value.length === 0) invalid("pickupDate", "empty", shape, 0);
+  if (shape === "compact-datetime") return compactDatetimeDate(value);
   if (value.length !== MAX_PUBLIC_DATE_LENGTH) invalid("pickupDate", "length", shape, value.length);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) invalid("pickupDate", "pattern", shape, value.length);
   const parsed = new Date(`${value}T00:00:00.000Z`);

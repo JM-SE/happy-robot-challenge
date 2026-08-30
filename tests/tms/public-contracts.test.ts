@@ -72,10 +72,16 @@ describe("Phase 3B public contracts", () => {
     expect(JSON.stringify(caught)).not.toContain("2026-01-15T00:00:00Z");
   });
 
-  it("diagnoses compact pickup datetimes without logging the value", () => {
+  it("normalizes documented compact pickup datetimes to public dates", () => {
+    expect(toPublicLoadDetail(load({ pickupDate: "20260512080000" }))).toMatchObject({
+      pickupDate: "2026-05-12",
+    });
+  });
+
+  it("rejects invalid compact pickup datetime calendar values without logging the value", () => {
     let caught: unknown;
     try {
-      toPublicLoadDetail(load({ pickupDate: "20260115083000" }));
+      toPublicLoadDetail(load({ pickupDate: "20261312080000" }));
     } catch (error) {
       caught = error;
     }
@@ -84,13 +90,13 @@ describe("Phase 3B public contracts", () => {
       metadata: {
         mapping: {
           field: "pickupDate",
-          detail: "length",
+          detail: "calendar",
           shape: "compact-datetime",
           observedLength: 14,
         },
       },
     });
-    expect(JSON.stringify(caught)).not.toContain("20260115083000");
+    expect(JSON.stringify(caught)).not.toContain("20261312080000");
   });
 
   it("sorts summaries deterministically, bounds results, and rejects duplicates", () => {
