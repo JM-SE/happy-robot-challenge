@@ -51,11 +51,11 @@ describe("buildRequest", () => {
     expect(() => buildRequest({ command: "DEBUG_ECHO", authToken: "token", fields: { [name]: "value" } })).toThrow(TmsValidationError);
   });
 
-  it("uses UTF-8 byte length, accepts the exact limit, and keeps protocol ordering immutable", () => {
-    const frame = buildRequest({ command: "UNKNOWN_CMD", authToken: "tökën", fields: { MSG: "😀" } });
-    expect(buildRequest({ command: "UNKNOWN_CMD", authToken: "tökën", fields: { MSG: "😀" } }, frame.byteLength)).toEqual(frame);
-    expect(() => buildRequest({ command: "UNKNOWN_CMD", authToken: "tökën", fields: { MSG: "😀" } }, frame.byteLength - 1)).toThrow();
-    expect(frame.toString("utf8").startsWith("CMD:UNKNOWN_CMD|AUTH:tökën|MSG:😀\r\n")).toBe(true);
+  it("uses ASCII byte length, accepts the exact limit, and keeps protocol ordering immutable", () => {
+    const frame = buildRequest({ command: "UNKNOWN_CMD", authToken: "token", fields: { MSG: "hello" } });
+    expect(buildRequest({ command: "UNKNOWN_CMD", authToken: "token", fields: { MSG: "hello" } }, frame.byteLength)).toEqual(frame);
+    expect(() => buildRequest({ command: "UNKNOWN_CMD", authToken: "token", fields: { MSG: "hello" } }, frame.byteLength - 1)).toThrow();
+    expect(frame.toString("ascii").startsWith("CMD:UNKNOWN_CMD|AUTH:token|MSG:hello\r\n")).toBe(true);
     expect(frame.subarray(-2).equals(Buffer.from("\r\n"))).toBe(true);
   });
 

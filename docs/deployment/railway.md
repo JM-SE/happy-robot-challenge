@@ -23,9 +23,9 @@ The Docker build step is `npm run build` (the builder stage's `RUN npm run build
 
 ## Environment variables and secret handling
 
-Mock mode requires the server-only variables `ADAPTER_MODE=mock`, `ADAPTER_SHARED_SECRET`, `TMS_HOST`, `TMS_PORT`, `TMS_AUTH_TOKEN`, `TMS_CONNECT_TIMEOUT_MS`, `TMS_RESPONSE_TIMEOUT_MS`, `TMS_MAX_FRAME_BYTES`, `REAL_BOOKING_ENABLED=false`, `TMS_MOCK_SCENARIO`, `TMS_MOCK_DELAY_MS`, and `TMS_MOCK_FRAGMENT_SIZE`.
+Mock mode requires the server-only variables `ADAPTER_MODE=mock`, `ADAPTER_SHARED_SECRET`, `TMS_HOST`, `TMS_PORT`, `TMS_AUTH_TOKEN`, `TMS_CONNECT_TIMEOUT_MS`, `TMS_RESPONSE_TIMEOUT_MS`, `TMS_MAX_FRAME_BYTES` (deprecated request-frame compatibility), `TMS_MAX_RESPONSE_BYTES`, `TMS_MAX_RESPONSE_LINE_BYTES`, `TMS_MAX_RESPONSE_RECORDS`, `REAL_BOOKING_ENABLED=false`, `TMS_MOCK_SCENARIO`, `TMS_MOCK_DELAY_MS`, and `TMS_MOCK_FRAGMENT_SIZE`. Response safety variables default to `65536`, `16384`, and `512`; they are independently capped at `1048576`, `65536`, and `4096`.
 
-Real read-only mode additionally requires the approved, server-only controls `TMS_MODE=real`, `TMS_ENV=non-production`, `TMS_REAL_ENABLED=true`, `TMS_REAL_TARGET_PIN`, `TMS_REAL_TARGET_ALLOWLIST`, `TMS_REAL_TRANSPORT_APPROVED=true`, `TMS_REAL_AUTHORITY_HOST`, and `TMS_REAL_AUTHORITY_PORT`. Optional probe flags are `TMS_REAL_ECHO_EXTRAS` and `TMS_REAL_ECHO_AUTH_INVALID`. Read-only mode does not authorize booking.
+Real read-only mode additionally requires the approved, server-only controls `TMS_MODE=real`, `TMS_ENV=non-production`, `TMS_REAL_ENABLED=true`, `TMS_REAL_TARGET_PIN`, `TMS_REAL_TARGET_ALLOWLIST`, `TMS_REAL_TRANSPORT_APPROVED=true`, `TMS_REAL_AUTHORITY_HOST`, and `TMS_REAL_AUTHORITY_PORT`. It uses the same independent response safety variables and defaults above. Optional probe flags are `TMS_REAL_ECHO_EXTRAS` and `TMS_REAL_ECHO_AUTH_INVALID`. Read-only mode does not authorize booking.
 
 Read-only/liveness deployment needs `PORT` from Railway; it is not set to a public URL. Set secrets in Railway's secret/environment-variable facility, never in source, `NEXT_PUBLIC_*`, committed files, logs, or webhook payloads. Do not invent values for placeholders or provider contracts. Keep `REAL_BOOKING_ENABLED=false`; real authority variables require approved private-network controls.
 

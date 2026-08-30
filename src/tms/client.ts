@@ -105,7 +105,7 @@ export class TmsClient {
     let writeAttempted = false;
     let writeDisposition: TmsWriteDisposition = "not-sent";
     let terminalResult: TmsParsedResponse | undefined;
-    const parser = new LtmsResponseParser(this.config.maxFrameBytes);
+    const parser = new LtmsResponseParser(this.config.responseLimits ?? this.config.maxFrameBytes);
 
     const log = (outcome: "success" | "error", error?: unknown, records?: number) => {
       logTmsEvent({
@@ -175,7 +175,7 @@ export class TmsClient {
         if (deadlineListener) budget.signal.removeEventListener("abort", deadlineListener);
         if (ownsBudget) budget.dispose();
         admission.release();
-        socket?.end();
+         socket?.destroy();
         log("success", undefined, result.records.length);
         resolve(result);
       };
@@ -188,7 +188,7 @@ export class TmsClient {
         responseTimer = setTimeout(() => settleError(new TmsTimeoutError("RESPONSE_TIMEOUT")), Math.min(this.config.responseTimeoutMs, budget.remainingMs()));
         let frame: Buffer;
         try {
-          frame = buildRequest({ command: request.command, authToken: this.config.authToken, fields: request.fields }, this.config.maxFrameBytes);
+           frame = buildRequest({ command: request.command, authToken: this.config.authToken, fields: request.fields }, this.config.maxRequestBytes ?? this.config.maxFrameBytes);
         } catch (error) {
           settleError(error);
           return;
@@ -213,8 +213,8 @@ export class TmsClient {
         if (settled) return;
         try {
           budget.checkpoint();
-          const result = parser.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
-          if (result) terminalResult = result;
+           const result = parser.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+           if (result) settleSuccess(result);
         } catch (error) {
           settleError(error);
         }

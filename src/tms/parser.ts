@@ -1,6 +1,6 @@
 import { TmsProtocolError, TmsRemoteError, TmsResponseIncompleteError } from "./errors";
-import { DEFAULT_TMS_FRAME_BYTES, MAX_TMS_RAW_LINE_BYTES, MAX_TMS_RESPONSE_RECORDS } from "./limits";
-import type { TmsFields, TmsInternalParsedResponse, TmsInternalRecord, TmsParsedResponse } from "./types";
+import { DEFAULT_TMS_RESPONSE_BYTES, DEFAULT_TMS_RESPONSE_LINE_BYTES, DEFAULT_TMS_RESPONSE_RECORDS, MAX_TMS_DIAGNOSTIC_LINE_BYTES } from "./limits";
+import type { TmsFields, TmsInternalParsedResponse, TmsInternalRecord, TmsParsedResponse, TmsResponseLimits } from "./types";
 
 const IDENTIFIER = /^[A-Z][A-Z0-9_]*$/;
 const CR = 13;
@@ -11,10 +11,11 @@ function trimAsciiPadding(value: string): string {
 }
 
 function decode(bytes: Buffer): string {
+  if (bytes.some((byte) => byte > 0x7f)) throw new TmsProtocolError("Response contains non-ASCII bytes.");
   try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    return bytes.toString("ascii");
   } catch {
-    throw new TmsProtocolError("Response contains invalid UTF-8.");
+    throw new TmsProtocolError("Response contains invalid ASCII.");
   }
 }
 
@@ -28,13 +29,13 @@ export function redactDiagnosticLine(line: string): string {
       : segment;
   }).join("|");
 
-  if (Buffer.byteLength(redacted, "utf8") <= MAX_TMS_RAW_LINE_BYTES) return redacted;
-  let bounded = Buffer.from(redacted, "utf8").subarray(0, MAX_TMS_RAW_LINE_BYTES).toString("utf8");
-  while (Buffer.byteLength(bounded, "utf8") > MAX_TMS_RAW_LINE_BYTES) bounded = bounded.slice(0, -1);
+  if (Buffer.byteLength(redacted, "ascii") <= MAX_TMS_DIAGNOSTIC_LINE_BYTES) return redacted;
+  let bounded = Buffer.from(redacted, "ascii").subarray(0, MAX_TMS_DIAGNOSTIC_LINE_BYTES).toString("ascii");
+  while (Buffer.byteLength(bounded, "ascii") > MAX_TMS_DIAGNOSTIC_LINE_BYTES) bounded = bounded.slice(0, -1);
   return bounded;
 }
 
-function parseFields(line: string, allowResponseAuth = false): TmsFields {
+function parseFields(line: string): TmsFields {
   const fields: TmsFields = {};
   for (const segment of line.split("|")) {
     const separator = segment.indexOf(":");
@@ -42,10 +43,6 @@ function parseFields(line: string, allowResponseAuth = false): TmsFields {
     const name = trimAsciiPadding(segment.slice(0, separator));
     const value = trimAsciiPadding(segment.slice(separator + 1));
     if (!IDENTIFIER.test(name)) throw new TmsProtocolError("Response contains an invalid field name.");
-    // NOTES is a valid optional payload in the load record contract; all other
-    // response fields must carry a value.
-    if (!value && name !== "NOTES") throw new TmsProtocolError("Response contains an empty field value.");
-    if (name === "CMD" || (name === "AUTH" && !allowResponseAuth)) throw new TmsProtocolError("Response contains a reserved field.");
     if (name in fields) throw new TmsProtocolError("Response contains a duplicate field.");
     fields[name] = value;
   }
@@ -58,7 +55,7 @@ function parseRecord(line: string): TmsInternalRecord {
   if (hasBareMarker && segments[0] !== "ECHO") throw new TmsProtocolError("Response contains an unknown record marker.");
 
   const recordType = hasBareMarker ? segments.shift() : undefined;
-  const fields = parseFields(segments.join("|"), recordType === "ECHO");
+  const fields = parseFields(segments.join("|"));
   return recordType
      ? { fields, recordType, rawLine: redactDiagnosticLine(line) }
      : { fields, rawLine: redactDiagnosticLine(line) };
@@ -70,22 +67,33 @@ export class LtmsResponseParser {
   private totalBytes = 0;
   private result: TmsInternalParsedResponse | undefined;
 
-  constructor(private readonly maxFrameBytes = DEFAULT_TMS_FRAME_BYTES) {
-    if (!Number.isInteger(maxFrameBytes) || maxFrameBytes <= 0) throw new TmsProtocolError("Invalid response frame limit.");
+  private readonly limits: TmsResponseLimits;
+
+  constructor(limits: TmsResponseLimits | number = {
+    maxBytes: DEFAULT_TMS_RESPONSE_BYTES,
+    maxLineBytes: DEFAULT_TMS_RESPONSE_LINE_BYTES,
+    maxRecords: DEFAULT_TMS_RESPONSE_RECORDS,
+  }) {
+    this.limits = typeof limits === "number" ? { maxBytes: limits, maxLineBytes: DEFAULT_TMS_RESPONSE_LINE_BYTES, maxRecords: DEFAULT_TMS_RESPONSE_RECORDS } : limits;
+    if (![this.limits.maxBytes, this.limits.maxLineBytes, this.limits.maxRecords].every((value) => Number.isInteger(value) && value > 0)) throw new TmsProtocolError("Invalid response limits.");
   }
 
   push(chunk: Buffer | string): TmsParsedResponse | undefined {
     if (this.result) throw new TmsProtocolError("Response data arrived after the terminal frame.");
     const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     this.totalBytes += bytes.byteLength;
-    if (this.totalBytes > this.maxFrameBytes) throw new TmsProtocolError("TMS response exceeds the configured frame limit.");
-    this.pending = Buffer.concat([this.pending, bytes]);
+    if (bytes.some((byte) => byte > 0x7f)) throw new TmsProtocolError("Response contains non-ASCII bytes.");
+      if (this.totalBytes > this.limits.maxBytes) throw new TmsProtocolError("TMS response exceeds the configured limit.");
+      this.pending = Buffer.concat([this.pending, bytes]);
+      if (this.pending.byteLength > this.limits.maxLineBytes + 2 && !this.pending.includes(CR)) {
+        throw new TmsProtocolError("Response line exceeds the configured limit.");
+      }
 
     while (true) {
       const lineEnd = this.findStrictLineEnd();
       if (lineEnd === undefined) return undefined;
       const lineBytes = this.pending.subarray(0, lineEnd);
-      if (lineBytes.byteLength > MAX_TMS_RAW_LINE_BYTES) throw new TmsProtocolError("Response line exceeds the configured limit.");
+      if (lineBytes.byteLength > this.limits.maxLineBytes) throw new TmsProtocolError("Response line exceeds the configured limit.");
       this.pending = this.pending.subarray(lineEnd + 2);
       const line = decode(lineBytes);
 
@@ -97,13 +105,12 @@ export class LtmsResponseParser {
 
       if (line.startsWith("ERR|")) {
         const fields = parseFields(line.slice(4));
-        if (!fields.CODE) throw new TmsProtocolError("Remote error is missing CODE.");
-        if (fields.MSG === undefined) throw new TmsProtocolError("Remote error is missing MSG.");
-        throw new TmsRemoteError(fields.CODE, fields.MSG);
+        if (!fields.CODE?.trim()) throw new TmsProtocolError("Remote error is missing CODE.");
+        throw new TmsRemoteError(fields.CODE, fields.MSG ?? "");
       }
 
       if (!line) throw new TmsProtocolError("Empty response record.");
-       if (this.records.length >= MAX_TMS_RESPONSE_RECORDS) throw new TmsProtocolError("TMS response contains too many records.");
+        if (this.records.length >= this.limits.maxRecords) throw new TmsProtocolError("TMS response contains too many records.");
        this.records.push(parseRecord(line));
     }
   }
@@ -138,8 +145,8 @@ function toPublicResponse(response: TmsInternalParsedResponse): TmsParsedRespons
   };
 }
 
-export function parseResponse(data: Buffer | string, maxFrameBytes = DEFAULT_TMS_FRAME_BYTES): TmsParsedResponse {
-  const parser = new LtmsResponseParser(maxFrameBytes);
+export function parseResponse(data: Buffer | string, limits?: TmsResponseLimits | number): TmsParsedResponse {
+  const parser = new LtmsResponseParser(limits);
   parser.push(data);
   return parser.finish();
 }

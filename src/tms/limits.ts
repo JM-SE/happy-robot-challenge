@@ -1,7 +1,13 @@
 export const DEFAULT_TMS_FRAME_BYTES = 4096;
 export const MAX_TMS_REQUEST_FRAME_BYTES = 4096;
-export const MAX_TMS_RAW_LINE_BYTES = 256;
-export const MAX_TMS_RESPONSE_RECORDS = 128;
+export const DEFAULT_TMS_RESPONSE_BYTES = 65_536;
+export const MAX_TMS_RESPONSE_BYTES = 1_048_576;
+export const DEFAULT_TMS_RESPONSE_LINE_BYTES = 16_384;
+export const MAX_TMS_RESPONSE_LINE_BYTES = 65_536;
+export const DEFAULT_TMS_RESPONSE_RECORDS = 512;
+export const MAX_TMS_RESPONSE_RECORDS = 4_096;
+/** Bound used only when retaining a redacted diagnostic line internally. */
+export const MAX_TMS_DIAGNOSTIC_LINE_BYTES = 256;
 export const MAX_TMS_PORT = 65535;
 export const MAX_TMS_CONNECT_TIMEOUT_MS = 30_000;
 export const MAX_TMS_RESPONSE_TIMEOUT_MS = 60_000;

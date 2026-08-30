@@ -1,7 +1,7 @@
 import { isIP } from "node:net";
 import { TmsConfigurationError } from "./errors";
-import { DEFAULT_TMS_FRAME_BYTES, MAX_TMS_CONNECT_TIMEOUT_MS, MAX_TMS_PORT, MAX_TMS_REQUEST_FRAME_BYTES, MAX_TMS_RESPONSE_TIMEOUT_MS } from "./limits";
-import { TMS_MODES, type TmsConfig, type TmsMode } from "./types";
+import { DEFAULT_TMS_FRAME_BYTES, DEFAULT_TMS_RESPONSE_BYTES, DEFAULT_TMS_RESPONSE_LINE_BYTES, DEFAULT_TMS_RESPONSE_RECORDS, MAX_TMS_CONNECT_TIMEOUT_MS, MAX_TMS_PORT, MAX_TMS_REQUEST_FRAME_BYTES, MAX_TMS_RESPONSE_BYTES, MAX_TMS_RESPONSE_LINE_BYTES, MAX_TMS_RESPONSE_RECORDS, MAX_TMS_RESPONSE_TIMEOUT_MS } from "./limits";
+import { TMS_MODES, type TmsConfig, type TmsMode, type TmsResponseLimits } from "./types";
 import { type TargetAuthority, type ValidatedRealTarget } from "./target-authority";
 
 function required(env: NodeJS.ProcessEnv, name: string): string {
@@ -51,6 +51,15 @@ export function getTmsConfig(env: NodeJS.ProcessEnv = process.env, targetAuthori
     ? positiveInteger(env.TMS_MAX_FRAME_BYTES, "TMS_MAX_FRAME_BYTES", mode === TMS_MODES.REAL ? MAX_TMS_REQUEST_FRAME_BYTES : undefined)
     : DEFAULT_TMS_FRAME_BYTES;
 
+  const responseLimit = (name: string, fallback: number, maximum: number): number => env[name]?.trim()
+    ? positiveInteger(env[name]!, name, maximum)
+    : fallback;
+  const responseLimits: TmsResponseLimits = {
+    maxBytes: responseLimit("TMS_MAX_RESPONSE_BYTES", DEFAULT_TMS_RESPONSE_BYTES, MAX_TMS_RESPONSE_BYTES),
+    maxLineBytes: responseLimit("TMS_MAX_RESPONSE_LINE_BYTES", DEFAULT_TMS_RESPONSE_LINE_BYTES, MAX_TMS_RESPONSE_LINE_BYTES),
+    maxRecords: responseLimit("TMS_MAX_RESPONSE_RECORDS", DEFAULT_TMS_RESPONSE_RECORDS, MAX_TMS_RESPONSE_RECORDS),
+  };
+
   const host = required(env, "TMS_HOST");
   if (mode === TMS_MODES.MOCK && !isLoopbackHost(host)) {
     throw new TmsConfigurationError("Mock TMS mode requires a loopback target.");
@@ -85,6 +94,8 @@ export function getTmsConfig(env: NodeJS.ProcessEnv = process.env, targetAuthori
     connectTimeoutMs: positiveInteger(required(env, "TMS_CONNECT_TIMEOUT_MS"), "TMS_CONNECT_TIMEOUT_MS", MAX_TMS_CONNECT_TIMEOUT_MS),
     responseTimeoutMs: positiveInteger(required(env, "TMS_RESPONSE_TIMEOUT_MS"), "TMS_RESPONSE_TIMEOUT_MS", MAX_TMS_RESPONSE_TIMEOUT_MS),
     maxFrameBytes: maxFrame,
+    maxRequestBytes: maxFrame,
+    responseLimits,
     // Legacy env assertions are deliberately not copied into the runtime
     // config as authority. Only the independently-issued target can cross
     // the real transport boundary.

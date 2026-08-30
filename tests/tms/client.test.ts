@@ -22,11 +22,26 @@ describe("TmsClient", () => {
     expect(sockets).toHaveLength(2);
     expect(sockets[0].writes).toHaveLength(1);
     expect(sockets[0].writes[0].toString()).toContain("CMD:DEBUG_ECHO|AUTH:token|MSG:hello\r\n");
-    expect(sockets[0].ended).toBe(true);
-    sockets[0].emit("close");
-    expect(sockets[0].endCalls).toBe(1);
-    expect(sockets[0].destroyCalls).toBe(0);
-    expectNoSocketListeners(sockets[0]);
+     expect(sockets[0].destroyed).toBe(true);
+     sockets[0].emit("close");
+     expect(sockets[0].destroyCalls).toBe(1);
+     expectNoSocketListeners(sockets[0]);
+  });
+
+  it("settles successfully on END without waiting for peer close", async () => {
+    vi.useFakeTimers();
+    const socket = new TestSocket();
+    const client = new TmsClient(testConfig({ responseTimeoutMs: 10 }), socketConnect(socket));
+    const pending = client.execute({ command: "DEBUG_ECHO", fields: { MSG: "hello" } });
+    socket.emit("connect");
+    socket.emit("data", Buffer.from("MSG:hello\r\nEND\r\n"));
+    await expect(pending).resolves.toMatchObject({ records: [{ fields: { MSG: "hello" } }] });
+    await vi.advanceTimersByTimeAsync(10);
+    expect(socket.destroyed).toBe(true);
+    expect(socket.destroyCalls).toBe(1);
+    socket.emit("close");
+    expect(socket.destroyCalls).toBe(1);
+    expectNoSocketListeners(socket);
   });
 
   it("times out and destroys a socket that never connects", async () => {
@@ -54,7 +69,7 @@ describe("TmsClient", () => {
     socket.emit("end");
     await expect(pending).resolves.toBeDefined();
     expect(socket.writes).toHaveLength(1);
-    expect(socket.endCalls).toBe(1);
+    expect(socket.destroyCalls).toBe(1);
   });
 
   it("times out a connected socket waiting for response, clears all listeners, and does not retry", async () => {
@@ -172,13 +187,12 @@ describe("TmsClient", () => {
     expectNoSocketListeners(socket);
   });
 
-  it("rejects trailing bytes delivered after END on the socket seam", async () => {
+  it("rejects trailing bytes delivered in the same chunk after END", async () => {
     const socket = new TestSocket();
     const client = new TmsClient(testConfig(), socketConnect(socket));
     const pending = client.execute({ command: "DEBUG_ECHO", fields: { MSG: "hello" } });
     socket.emit("connect");
-    socket.emit("data", Buffer.from("MSG:hello\r\nEND\r\n"));
-    socket.emit("data", Buffer.from("TRAILING:bytes\r\n"));
+    socket.emit("data", Buffer.from("MSG:hello\r\nEND\r\nTRAILING:bytes\r\n"));
     let error: unknown;
     try {
       await pending;

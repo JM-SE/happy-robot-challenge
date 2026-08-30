@@ -32,6 +32,12 @@ export interface TmsParsedResponse {
   rawBytes: number;
 }
 
+export interface TmsResponseLimits {
+  maxBytes: number;
+  maxLineBytes: number;
+  maxRecords: number;
+}
+
 /** Internal parser record; raw wire text must not cross service/HTTP boundaries. */
 export interface TmsInternalRecord extends TmsRecord {
   rawLine: string;
@@ -49,7 +55,10 @@ export interface TmsConfig {
   authToken: string;
   connectTimeoutMs: number;
   responseTimeoutMs: number;
+  /** @deprecated Use maxRequestBytes. Retained for local fixture compatibility. */
   maxFrameBytes: number;
+  maxRequestBytes?: number;
+  responseLimits?: TmsResponseLimits;
   /** Required for real mode; omitted for synthetic/mock configs. */
   targetPin?: string;
   /** Independent approved real target set; required for real booking. */

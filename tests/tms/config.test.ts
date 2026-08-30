@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { getTmsConfig } from "../../src/tms/config";
 import { TmsConfigurationError } from "../../src/tms/errors";
-import { DEFAULT_TMS_FRAME_BYTES, MAX_TMS_CONNECT_TIMEOUT_MS, MAX_TMS_RESPONSE_TIMEOUT_MS } from "../../src/tms/limits";
+import { DEFAULT_TMS_FRAME_BYTES, DEFAULT_TMS_RESPONSE_BYTES, DEFAULT_TMS_RESPONSE_LINE_BYTES, DEFAULT_TMS_RESPONSE_RECORDS, MAX_TMS_CONNECT_TIMEOUT_MS, MAX_TMS_RESPONSE_BYTES, MAX_TMS_RESPONSE_LINE_BYTES, MAX_TMS_RESPONSE_RECORDS, MAX_TMS_RESPONSE_TIMEOUT_MS } from "../../src/tms/limits";
 import { createTargetAuthority } from "../../src/tms/target-authority";
 
 const requiredEnv = (): NodeJS.ProcessEnv => ({
@@ -38,6 +38,8 @@ describe("getTmsConfig", () => {
       connectTimeoutMs: 25,
       responseTimeoutMs: 50,
       maxFrameBytes: DEFAULT_TMS_FRAME_BYTES,
+      maxRequestBytes: DEFAULT_TMS_FRAME_BYTES,
+      responseLimits: { maxBytes: DEFAULT_TMS_RESPONSE_BYTES, maxLineBytes: DEFAULT_TMS_RESPONSE_LINE_BYTES, maxRecords: DEFAULT_TMS_RESPONSE_RECORDS },
     });
   });
 
@@ -53,6 +55,17 @@ describe("getTmsConfig", () => {
     env.TMS_MAX_FRAME_BYTES = "1";
 
     expect(getTmsConfig(env)).toMatchObject({ port: 1, connectTimeoutMs: 1, responseTimeoutMs: 1, maxFrameBytes: 1 });
+  });
+
+  it("parses independent response safety limits and rejects values over their caps", () => {
+    const env = requiredEnv();
+    env.TMS_MAX_RESPONSE_BYTES = String(MAX_TMS_RESPONSE_BYTES);
+    env.TMS_MAX_RESPONSE_LINE_BYTES = String(MAX_TMS_RESPONSE_LINE_BYTES);
+    env.TMS_MAX_RESPONSE_RECORDS = String(MAX_TMS_RESPONSE_RECORDS);
+    expect(getTmsConfig(env).responseLimits).toEqual({ maxBytes: MAX_TMS_RESPONSE_BYTES, maxLineBytes: MAX_TMS_RESPONSE_LINE_BYTES, maxRecords: MAX_TMS_RESPONSE_RECORDS });
+    expect(() => getTmsConfig({ ...requiredEnv(), TMS_MAX_RESPONSE_BYTES: String(MAX_TMS_RESPONSE_BYTES + 1) })).toThrow(TmsConfigurationError);
+    expect(() => getTmsConfig({ ...requiredEnv(), TMS_MAX_RESPONSE_LINE_BYTES: String(MAX_TMS_RESPONSE_LINE_BYTES + 1) })).toThrow(TmsConfigurationError);
+    expect(() => getTmsConfig({ ...requiredEnv(), TMS_MAX_RESPONSE_RECORDS: String(MAX_TMS_RESPONSE_RECORDS + 1) })).toThrow(TmsConfigurationError);
   });
 
   it("accepts the highest valid TCP port and rejects values above it", () => {

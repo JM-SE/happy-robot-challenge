@@ -83,10 +83,14 @@ describe("LtmsResponseParser", () => {
     expect(() => parseResponse(response)).toThrow();
   });
 
-  it.each([":value\r\nEND\r\n", "A\r\nEND\r\n", "A:\r\nEND\r\n", "a:value\r\nEND\r\n", "A:value|A:again\r\nEND\r\n", "CMD:x\r\nEND\r\n", "AUTH:x\r\nEND\r\n"])(
-    "rejects malformed, empty, duplicate, or reserved response fields %j",
+  it.each([":value\r\nEND\r\n", "A\r\nEND\r\n", "a:value\r\nEND\r\n", "A:value|A:again\r\nEND\r\n"])(
+    "rejects malformed, duplicate, or invalid response fields %j",
     (response) => expect(() => parseResponse(response)).toThrow(TmsProtocolError),
   );
+
+  it("accepts syntactically empty and reserved response fields", () => {
+    expect(parseResponse("A:\r\nCMD:x|AUTH:\r\nEND\r\n").records[0]?.fields).toEqual({ A: "" });
+  });
 
   it("allows colons inside values but never allows framing bytes inside a value", () => {
     expect(parseResponse("MSG:time:12:30\r\nEND\r\n").records[0]?.fields.MSG).toBe("time:12:30");
@@ -109,8 +113,8 @@ describe("LtmsResponseParser", () => {
     (response) => expect(() => parseResponse(response)).toThrow(),
   );
 
-  it("classifies an ERR terminal without MSG as a protocol error", () => {
-    expect(() => parseResponse("ERR|CODE:SERVER_ERROR\r\n")).toThrow(TmsProtocolError);
+  it("accepts an ERR terminal without MSG", () => {
+    expect(() => parseResponse("ERR|CODE:SERVER_ERROR\r\n")).toThrow(TmsRemoteError);
   });
 
   it("parses the official real DEBUG_ECHO marker and response AUTH field", () => {
@@ -127,10 +131,9 @@ describe("LtmsResponseParser", () => {
     expect(() => parseResponse("A:value\r\nEND\r\nDONE\r\n")).toThrow(TmsProtocolError);
   });
 
-  it("rejects invalid UTF-8 and response byte overflow across chunks", () => {
+  it("rejects non-ASCII responses and response byte overflow across chunks", () => {
     const parser = new LtmsResponseParser(5);
-    parser.push(Buffer.from([0xff]));
-    expect(() => parser.push(Buffer.from([13, 10]))).toThrow(TmsProtocolError);
+    expect(() => parser.push(Buffer.from([0xff]))).toThrow("non-ASCII");
     const limited = new LtmsResponseParser(9);
     expect(() => {
       limited.push(Buffer.from("A:1\r\n"));
@@ -143,5 +146,12 @@ describe("LtmsResponseParser", () => {
     parser.push(Buffer.from("END\r\n"));
     expect(() => parser.push(Buffer.from("A:value\r\n"))).toThrow(TmsProtocolError);
     expect(() => parseResponse("A:value\r\n")).toThrow(TmsResponseIncompleteError);
+  });
+
+  it("enforces independent response line and record limits", () => {
+    expect(() => parseResponse("A:12345\r\nEND\r\n", { maxBytes: 100, maxLineBytes: 5, maxRecords: 10 })).toThrow(TmsProtocolError);
+    expect(() => parseResponse("A:1\r\nB:2\r\nEND\r\n", { maxBytes: 100, maxLineBytes: 20, maxRecords: 1 })).toThrow(TmsProtocolError);
+    const parser = new LtmsResponseParser({ maxBytes: 100, maxLineBytes: 5, maxRecords: 10 });
+    expect(() => parser.push(Buffer.from("A:123456"))).toThrow(TmsProtocolError);
   });
 });
