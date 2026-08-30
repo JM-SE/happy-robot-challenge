@@ -13,6 +13,7 @@ import { logTmsEvent } from "./logger";
 import { LtmsResponseParser } from "./parser";
 import { assertTmsCommandAllowed, TMS_EXECUTION_SCOPES, type TmsCommandPolicy } from "./policy";
 import { connectTcp, createTlsConnector, type TmsConnect, type TmsSocket } from "./transport";
+import { assertValidatedReadOnlyTcpTarget } from "./target-authority";
 import type { TmsCommandRequest, TmsConfig, TmsParsedResponse } from "./types";
 import { ControlledBookingAuthorization, type ControlledBookingPort } from "./controlled-booking";
 import { DeadlineBudget, DeadlineExceededError } from "./deadline";
@@ -44,12 +45,21 @@ export class TmsClient {
       throw new TmsConfigurationError("The generic TMS client cannot hold the real booking capability.");
     }
     if (config.mode === "real") {
-      // The real transport boundary is never injectable. Test sockets remain
-      // available through mock-local configs, while real mode can only use an
-      // authority-issued TLS target.
-      this.connect = config.validatedTarget
-        ? createTlsConnector(config.validatedTarget)
-        : () => { throw new TmsConfigurationError("Real TMS transport requires an authority-validated TLS target."); };
+      // Plain TCP is accepted only for the explicit real read-only scope. It
+      // cannot be used by the controlled booking capability.
+      if (config.validatedTarget?.transport === "tcp") {
+        if (policy?.scope !== TMS_EXECUTION_SCOPES.REAL_2B_READ_ONLY) {
+          throw new TmsConfigurationError("Plain TCP is restricted to real read-only TMS operations.");
+        }
+        assertValidatedReadOnlyTcpTarget(config.validatedTarget);
+        this.connect = connectTcp;
+      } else {
+        // The real TLS transport boundary is never injectable. Test sockets
+        // remain available through mock-local configs.
+        this.connect = config.validatedTarget
+          ? createTlsConnector(config.validatedTarget)
+          : () => { throw new TmsConfigurationError("Real TMS transport requires an authority-validated target."); };
+      }
     } else this.connect = connect ?? connectTcp;
   }
 

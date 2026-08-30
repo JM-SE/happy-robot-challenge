@@ -1,17 +1,9 @@
-import { getAdapterConfig } from "../../../../../src/tms/adapter-config";
-import { getTmsConfig } from "../../../../../src/tms/config";
-import { TmsClient } from "../../../../../src/tms/client";
 import { handleAdapterRequest } from "../../../../../src/tms/http-contract";
 import { parseHttpDetail } from "../../../../../src/tms/http-dto";
-import { toPublicLoadDetail } from "../../../../../src/tms/public-load-mapper";
-import { getLoad } from "../../../../../src/tms/service";
-import { admitTmsRequest } from "../../../../../src/tms/http-controls";
-import { MAX_TMS_DEADLINE_MS } from "../../../../../src/tms/limits";
+import { executeHttpDetail } from "../../../../../src/tms/server-read-only-adapter";
 export const runtime = "nodejs";
 export const POST = (request: Request) => handleAdapterRequest(request, async (body) => {
   const input = parseHttpDetail(body);
-  getAdapterConfig();
-  const client = new TmsClient(getTmsConfig(), undefined, undefined, undefined, { admissionFactory: () => admitTmsRequest({ deadlineMs: MAX_TMS_DEADLINE_MS, rateKey: "LOAD_GET" }) });
-  return { load: toPublicLoadDetail(await getLoad(input, client)) };
+  return executeHttpDetail(input);
 });
 export const GET = (request: Request) => handleAdapterRequest(request, async () => undefined);

@@ -3,7 +3,7 @@ import tls from "node:tls";
 import { getTmsConfig } from "../../src/tms/config-core";
 import { TmsConfigurationError } from "../../src/tms/errors";
 import { connectTls } from "../../src/tms/transport";
-import { createTargetAuthority } from "../../src/tms/target-authority";
+import { createReadOnlyTcpTargetAuthority, createTargetAuthority } from "../../src/tms/target-authority";
 
 vi.mock("node:tls", () => ({ default: { connect: vi.fn() } }));
 
@@ -42,5 +42,21 @@ describe("real target authority and TLS transport", () => {
       rejectUnauthorized: true, ca: "CA", timeout: 100,
     }));
     connect.mockReset();
+  });
+
+  it("issues a separately marked plaintext target only for read-only authority", () => {
+    const authority = createReadOnlyTcpTargetAuthority({
+      approvedTargets: [{ host: "127.0.0.1", port: 9000 }],
+      egressApproval: "private-network",
+    });
+    const readOnlyTarget = authority.authorize({ host: "127.0.0.1", port: 9000 });
+
+    expect(readOnlyTarget).toMatchObject({
+      host: "127.0.0.1",
+      port: 9000,
+      transport: "tcp",
+      readOnly: true,
+      egressApproval: "private-network",
+    });
   });
 });
