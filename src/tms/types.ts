@@ -130,6 +130,16 @@ export interface BookLoadInput {
   agreedRate: number;
 }
 
+export interface BookingReceipt {
+  loadId: string;
+  bookingRef: string;
+  status: "BOOKED";
+  timestamp: string;
+}
+
+export type BookingRequestContext = BookLoadInput;
+
+/** @deprecated Use BookingReceipt plus BookingRequestContext. */
 export interface BookingInternal {
   loadId: string;
   mcNumber: string;
@@ -138,4 +148,5 @@ export interface BookingInternal {
   bookedAt: string;
 }
 
+/** @deprecated Compatibility product shape for local callers. */
 export type BookingPublic = BookingInternal;

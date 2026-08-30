@@ -91,9 +91,9 @@ describe("configurable local fault scenarios over TCP", () => {
       });
       expect(response.records[0]?.fields).toMatchObject({
         LOAD_ID: "LOAD-1001",
-        MC_NUM: "12345",
-        AGREED_RATE: "2200",
         BOOKING_REF: "BOOK-LOAD-1001",
+        STATUS: "BOOKED",
+        TIMESTAMP: expect.stringMatching(/^\d{14}$/),
       });
       expect(response.records[0]?.fields).not.toHaveProperty("MSG");
       expect(server.requestCount).toBe(1);

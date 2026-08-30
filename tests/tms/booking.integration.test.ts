@@ -17,7 +17,9 @@ describe("stateful booking TCP integration", () => {
     const address = await server.start();
     const config: TmsConfig = { mode: "mock", host: address.host, port: address.port, authToken: "token", connectTimeoutMs: 1000, responseTimeoutMs: 1000, maxFrameBytes: 4096 };
     const client = new TmsClient(config);
-    await expect(client.execute({ command: "LOAD_BOOK", fields: { LOAD_ID: "LOAD-1001", MC_NUM: "12345", AGREED_RATE: 2200 } })).resolves.toBeDefined();
+    await expect(client.execute({ command: "LOAD_BOOK", fields: { LOAD_ID: "LOAD-1001", MC_NUM: "12345", AGREED_RATE: 2200 } })).resolves.toMatchObject({
+      records: [{ fields: { LOAD_ID: "LOAD-1001", BOOKING_REF: "BOOK-LOAD-1001", STATUS: "BOOKED", TIMESTAMP: expect.stringMatching(/^\d{14}$/) } }],
+    });
     await expect(client.execute({ command: "LOAD_BOOK", fields: { LOAD_ID: "LOAD-1001", MC_NUM: "12345", AGREED_RATE: 2200 } })).rejects.toMatchObject({ code: "ALREADY_BOOKED" });
     expect(server.connectionCount).toBe(2);
   });

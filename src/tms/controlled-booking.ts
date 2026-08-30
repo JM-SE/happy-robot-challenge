@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { InMemoryBookingAttemptLedger, type BookingAttemptLedger } from "./attempt-ledger";
-import { recordToBookingPublic, toBookLoadFields } from "./booking";
+import { bookingReceiptToPublic, recordToBookingReceipt, toBookLoadFields } from "./booking";
+import { bookingWriteDisposition, classifyBookingOutcome } from "./booking-outcome";
 import { isTmsAdapterError, TmsConfigurationError, TmsUpstreamError, TmsValidationError } from "./errors";
 import { parseLoadQueryInput, recordToPublicLoad, toLoadDetailFields, toLoadQueryFields } from "./loads";
 import type { TmsCommandPolicy } from "./policy";
@@ -131,10 +132,6 @@ function assertFresh(expiresAt: number, now: number): void {
 
 function assertSameIdentity(expected: string, actual: string, label: string): void {
   if (expected !== actual) throw new TmsValidationError(`${label} does not match the selected load.`);
-}
-
-function assertSameRate(expected: number, actual: number, label: string): void {
-  if (expected !== actual) throw new TmsUpstreamError(`${label} does not match the authorized booking.`);
 }
 
 function assertMaterialDetail(selection: SelectedLoad, detail: LoadPublic): void {
@@ -354,7 +351,7 @@ export class ControlledBookingWorkflow {
   }
 
 
-  async book(authorization = this.authorization): Promise<{ booking: ReturnType<typeof recordToBookingPublic>; operation: ControlledBookingOperationResult }> {
+  async book(authorization = this.authorization): Promise<{ booking: ReturnType<typeof bookingReceiptToPublic>; operation: ControlledBookingOperationResult }> {
     if (!authorization || !this.selection) throw new TmsConfigurationError("Booking requires validated handoffs.");
     if (!ControlledBookingAuthorization.isIssued(authorization)) throw new TmsConfigurationError("Booking authorization was not issued by the workflow.");
     if (authorization !== this.authorization) throw new TmsConfigurationError("Booking authorization does not belong to this workflow.");
@@ -373,20 +370,28 @@ export class ControlledBookingWorkflow {
       const response = await this.executeBooking(authorization);
       responseReceived = true;
       this.budget?.checkpoint();
-      if (response.records.length !== 1) throw new TmsUpstreamError("Booking response must contain exactly one record.");
-      const booking = await this.runBudget(DEADLINE_PHASES.MAPPING, () => recordToBookingPublic(response.records[0]!));
-      assertSameIdentity(authorization.context.selection.selectedLoadId, booking.loadId, "Booking load ID");
-      assertSameIdentity(authorization.context.carrier.mcNumber, booking.mcNumber, "Booking MC number");
-      assertSameRate(authorization.context.negotiation.agreedRate, booking.agreedRate, "Booking agreed rate");
+       if (response.records.length !== 1) throw new TmsUpstreamError("Booking response must contain exactly one record.");
+       const receipt = await this.runBudget(DEADLINE_PHASES.MAPPING, () => recordToBookingReceipt(response.records[0]!));
+       const outcome = classifyBookingOutcome({ expectedLoadId: authorization.context.selection.selectedLoadId, receipt, writeDisposition: "sent" });
+       if (outcome !== "confirmed-success") throw new TmsUpstreamError("Booking receipt does not match the selected load.");
+       const booking = bookingReceiptToPublic(receipt, input);
       await this.runBudget(DEADLINE_PHASES.MAPPING, () => { this.state = "terminal"; });
       await this.transitionLedger(authorization, claimToken, "sent");
        return { booking, operation: { operation: "LOAD_BOOK", result: { response, requestBytes: requestBytes(this.config, "LOAD_BOOK", fields), durationMs: Math.max(0, this.now() - startedAt) } } };
     } catch (error) {
-      if (responseReceived || isPostWriteBookingUncertain(error)) {
-        authorization.markBookingUncertain();
+       const outcome = classifyBookingOutcome({
+         expectedLoadId: authorization.context.selection.selectedLoadId,
+         error,
+         writeDisposition: responseReceived ? "sent" : bookingWriteDisposition(error),
+       });
+       if (outcome === "unknown") {
+         authorization.markBookingUncertain();
         await this.runBudget(DEADLINE_PHASES.RECONCILIATION, () => { this.state = "uncertain"; });
         await this.transitionLedger(authorization, claimToken, "unknown");
-      } else {
+       } else if (outcome === "confirmed-rejection") {
+         await this.runBudget(DEADLINE_PHASES.MAPPING, () => { this.state = "terminal"; });
+         await this.transitionLedger(authorization, claimToken, "sent");
+       } else {
         await this.runBudget(DEADLINE_PHASES.MAPPING, () => { this.state = "terminal"; });
       }
       throw error;
@@ -446,5 +451,5 @@ export class ControlledBookingWorkflow {
 }
 
 function requestBytes(config: TmsConfig, command: "LOAD_QUERY" | "LOAD_GET" | "LOAD_BOOK", fields: Record<string, string | number>): number {
-  return buildRequest({ command, authToken: config.authToken, fields }, config.maxFrameBytes).byteLength;
+  return buildRequest({ command, authToken: config.authToken, fields }, config.maxRequestBytes ?? config.maxFrameBytes).byteLength;
 }

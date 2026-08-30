@@ -1,5 +1,5 @@
 import { TmsUpstreamError, TmsValidationError } from "./errors";
-import type { BookLoadInput, BookingPublic, TmsRecord } from "./types";
+import type { BookLoadInput, BookingPublic, BookingReceipt, BookingRequestContext, TmsRecord } from "./types";
 
 const MAX_RATE = 1_000_000_000;
 
@@ -54,20 +54,44 @@ export function toBookLoadFields(input: BookLoadInput): Record<string, string | 
   };
 }
 
-function required(fields: Record<string, string>, name: string): string {
+function required(fields: Record<string, string>, name: string, maxLength = 64): string {
   const value = fields[name];
-  if (value === undefined || !value) throw new TmsUpstreamError(`Booking response is missing ${name}.`);
+  if (value === undefined || !value || value.length > maxLength || /[|\r\n]/.test(value)) throw new TmsUpstreamError(`Booking response contains an invalid ${name}.`);
   return value;
 }
 
-export function recordToBookingPublic(record: TmsRecord): BookingPublic {
-  const agreedRate = Number(required(record.fields, "AGREED_RATE"));
-  if (!Number.isFinite(agreedRate)) throw new TmsUpstreamError("Booking response contains an invalid rate.");
+function compactTimestampToUtc(value: string): string {
+  if (!/^\d{14}$/.test(value)) throw new TmsUpstreamError("Booking response contains an invalid timestamp.");
+  const year = Number(value.slice(0, 4));
+  const month = Number(value.slice(4, 6));
+  const day = Number(value.slice(6, 8));
+  const hour = Number(value.slice(8, 10));
+  const minute = Number(value.slice(10, 12));
+  const second = Number(value.slice(12, 14));
+  const date = new Date(0);
+  date.setUTCHours(hour, minute, second, 0);
+  date.setUTCFullYear(year, month - 1, day);
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day || date.getUTCHours() !== hour || date.getUTCMinutes() !== minute || date.getUTCSeconds() !== second) {
+    throw new TmsUpstreamError("Booking response contains an invalid timestamp.");
+  }
+  return date.toISOString();
+}
+
+export function recordToBookingReceipt(record: TmsRecord): BookingReceipt {
   return {
     loadId: required(record.fields, "LOAD_ID"),
-    mcNumber: required(record.fields, "MC_NUM"),
-    agreedRate,
     bookingRef: required(record.fields, "BOOKING_REF"),
-    bookedAt: required(record.fields, "BOOKED_AT"),
+    status: record.fields.STATUS === "BOOKED" ? "BOOKED" : (() => { throw new TmsUpstreamError("Booking response contains an invalid status."); })(),
+    timestamp: compactTimestampToUtc(required(record.fields, "TIMESTAMP", 14)),
+  };
+}
+
+export function bookingReceiptToPublic(receipt: BookingReceipt, context: BookingRequestContext): BookingPublic {
+  return {
+    loadId: receipt.loadId,
+    mcNumber: context.mcNumber,
+    agreedRate: context.agreedRate,
+    bookingRef: receipt.bookingRef,
+    bookedAt: receipt.timestamp,
   };
 }

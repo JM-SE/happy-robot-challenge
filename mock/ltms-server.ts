@@ -54,9 +54,11 @@ function loadErrorFrame(code: string, message: string): Buffer {
   return errorFrame(code, message);
 }
 
-function bookingFrame(booking: { loadId: string; mcNumber: string; agreedRate: number; bookingRef: string; bookedAt: string }): Buffer {
+function bookingFrame(booking: { loadId: string; bookingRef: string; bookedAt: string }): Buffer {
+  const date = new Date(booking.bookedAt);
+  const timestamp = `${String(date.getUTCFullYear()).padStart(4, "0")}${String(date.getUTCMonth() + 1).padStart(2, "0")}${String(date.getUTCDate()).padStart(2, "0")}${String(date.getUTCHours()).padStart(2, "0")}${String(date.getUTCMinutes()).padStart(2, "0")}${String(date.getUTCSeconds()).padStart(2, "0")}`;
   return Buffer.from(
-    `LOAD_ID:${booking.loadId}|MC_NUM:${booking.mcNumber}|AGREED_RATE:${booking.agreedRate}|BOOKING_REF:${booking.bookingRef}|BOOKED_AT:${booking.bookedAt}\r\nEND\r\n`,
+    `LOAD_ID:${booking.loadId}|BOOKING_REF:${booking.bookingRef}|STATUS:BOOKED|TIMESTAMP:${timestamp}\r\nEND\r\n`,
     "utf8",
   );
 }
@@ -105,7 +107,7 @@ function dispatchCommand(fields: Map<string, string>, bookingState: LoadBookingS
     const agreedRate = Number(fields.get("AGREED_RATE"));
     if (!Number.isFinite(agreedRate) || agreedRate <= 0) return loadErrorFrame("INVALID_RATE", "Agreed rate is invalid");
     try {
-      return bookingFrame(bookLoadInState(bookingState, {
+       return bookingFrame(bookLoadInState(bookingState, {
         loadId: fields.get("LOAD_ID") ?? "",
         mcNumber: fields.get("MC_NUM") ?? "",
         agreedRate,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { parseBookLoadInput, toBookLoadFields } from "../../src/tms/booking";
+import { bookingReceiptToPublic, parseBookLoadInput, recordToBookingReceipt, toBookLoadFields } from "../../src/tms/booking";
 import { bookLoadInState, BookingStateError, createLoadBookingState } from "../../mock/dataset";
+import { parseResponse } from "../../src/tms/parser";
 
 describe("booking input and wire mapping", () => {
   it("normalizes numeric rates and maps the exact public fields", () => {
@@ -29,6 +30,24 @@ describe("booking input and wire mapping", () => {
     expect(() => bookLoadInState(state, { loadId: "LOAD-1001", mcNumber: "12345", agreedRate: 2200 })).toThrowError(
       new BookingStateError("ALREADY_BOOKED", "Load is already booked"),
     );
+  });
+
+  it("maps the canonical booking receipt and composes rate/MC from request context", () => {
+    const receipt = recordToBookingReceipt(parseResponse(
+      "STATUS:BOOKED|TIMESTAMP:20260512080000|BOOKING_REF:BOOK-1|LOAD_ID:LOAD-1\r\nEND\r\n",
+    ).records[0]!);
+    expect(receipt).toEqual({ loadId: "LOAD-1", bookingRef: "BOOK-1", status: "BOOKED", timestamp: "2026-05-12T08:00:00.000Z" });
+    expect(bookingReceiptToPublic(receipt, { loadId: "LOAD-1", mcNumber: "12345", agreedRate: 100 })).toEqual({
+      loadId: "LOAD-1", mcNumber: "12345", agreedRate: 100, bookingRef: "BOOK-1", bookedAt: "2026-05-12T08:00:00.000Z",
+    });
+  });
+
+  it.each([
+    "LOAD_ID:LOAD-1|BOOKING_REF:BOOK-1|STATUS:BOOKED|BOOKED_AT:2026-01-01T00:00:00.000Z",
+    "LOAD_ID:LOAD-1|BOOKING_REF:BOOK-1|STATUS:AVAILABLE|TIMESTAMP:20260101000000",
+    "LOAD_ID:LOAD-1|BOOKING_REF:BOOK-1|STATUS:BOOKED|TIMESTAMP:20261301000000",
+  ])("rejects a non-canonical booking receipt", (line) => {
+    expect(() => recordToBookingReceipt(parseResponse(`${line}\r\nEND\r\n`).records[0]!)).toThrow();
   });
 
   it("keeps separate mock state isolated and enforces internal MAX_BUY", () => {

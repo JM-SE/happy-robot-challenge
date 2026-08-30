@@ -273,7 +273,7 @@ describe("Phase 2C booking workflow locally", () => {
     const { negotiation, carrier } = handoffs("LOAD-1", 100);
     const authorization = workflow.authorize(createNegotiationHandoff(negotiation), createCarrierValidationHandoff(carrier), true);
 
-    await expect(workflow.book(authorization)).rejects.toThrow(/booking response is missing/i);
+    await expect(workflow.book(authorization)).rejects.toThrow(/booking response contains an invalid/i);
     expect(workflow.currentState).toBe("uncertain");
     expect(bookingCalls).toBe(1);
     await expect(workflow.book(authorization)).rejects.toThrow(/already been consumed/i);
