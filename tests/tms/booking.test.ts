@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { bookingReceiptToPublic, parseBookLoadInput, recordToBookingReceipt, toBookLoadFields } from "../../src/tms/booking";
 import { bookLoadInState, BookingStateError, createLoadBookingState } from "../../mock/dataset";
 import { parseResponse } from "../../src/tms/parser";
+import { createInternalMaxBuyRateAuthority } from "../../src/tms/rate-authority";
 
 describe("booking input and wire mapping", () => {
   it("normalizes numeric rates and maps the exact public fields", () => {
@@ -56,5 +57,19 @@ describe("booking input and wire mapping", () => {
     expect(() => bookLoadInState(first, { loadId: "LOAD-1001", mcNumber: "12345", agreedRate: 2301 })).toThrowError(/internal limit/);
     expect(bookLoadInState(second, { loadId: "LOAD-1001", mcNumber: "12345", agreedRate: 2200 }).loadId).toBe("LOAD-1001");
     expect(first.find((item) => item.load.loadId === "LOAD-1001")?.status).toBe("AVAILABLE");
+  });
+
+  it("authorizes rates against private MAX_BUY without exposing the ceiling", () => {
+    const authority = createInternalMaxBuyRateAuthority();
+    const load = { loadId: "LOAD-1", originState: "TX", destinationState: "CA", originCity: "Dallas", destinationCity: "LA", equipmentType: "DRY_VAN", rate: 100, notes: "", maxBuy: 90 };
+
+    expect(() => authority.authorize({ loadId: "LOAD-1", agreedRate: 90, load })).not.toThrow();
+    expect(() => authority.authorize({ loadId: "LOAD-1", agreedRate: 91, load })).toThrowError("The offered rate was not accepted.");
+    try {
+      authority.authorize({ loadId: "LOAD-1", agreedRate: 91, load });
+    } catch (error) {
+      expect(error).not.toHaveProperty("maxBuy");
+      expect(String(error)).not.toContain("90");
+    }
   });
 });

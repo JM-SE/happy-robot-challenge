@@ -12,10 +12,13 @@ Environmental limitations concern unavailable providers, credentials, deployment
 | Web Call and Inbound Voice Agent are implemented in the completed HappyRobot App; provider/dependency smoke evidence absent | Environmental/integration: external smoke and full business-capability evidence unavailable | IMPLEMENTED — NOT CURRENTLY VERIFIED |
 | FMCSA validation is App-owned and initiated through a direct App request; the adapter does not implement it or accept MC formatting as proof | Environmental/evidence: no successful verifiable result was captured for the only available MC, 872144 | IMPLEMENTED — NOT CURRENTLY VERIFIED; controlled real process blocked. MC validity is not determined |
 | SMS/email OTP unavailable | Environmental: organization/provider unavailable | BLOCKED — ORGANIZATION/ENVIRONMENT |
+| OTP is not a hard pre-match gate in the current implementation | Code/integration: no provider/send/verify path or ordering enforcement | BLOCKED — ORGANIZATION/ENVIRONMENT |
 | Twin unavailable due organization DB quota | Environmental: organization quota exceeded | BLOCKED — ORGANIZATION/ENVIRONMENT |
-| Operations UI fallback/demo data is process-local, in-memory, and non-persistent | Code/scope: temporary projection | IMPLEMENTED — NOT CURRENTLY VERIFIED |
-| Railway deployment exists by user confirmation; limited external health/read-only smoke evidence is recorded | Environmental/operations: deployment confirmed by user, point-in-time smoke only | IMPLEMENTED — NOT CURRENTLY VERIFIED |
-| Docker not externally verified | Environmental/operations: no external build evidence | IMPLEMENTED — NOT CURRENTLY VERIFIED |
+| Operations UI is a sanitized custom Next.js projection, not a native HappyRobot Apps/Twin-backed surface | Code/integration: process-local, in-memory, non-persistent; no browser evidence | PARTIAL — DEMO/LOCAL PROJECTION |
+| HappyRobot Apps repository import/deployment unavailable | Environmental/platform: Apps cannot currently ingest the repository; error evidence pending | BLOCKED — ORGANIZATION/ENVIRONMENT |
+| Railway deployment exists by user confirmation; limited external health/read-only smoke evidence is recorded | Environmental/operations: adapter workaround only, not intended HappyRobot Apps deployment evidence | IMPLEMENTED — NOT CURRENTLY VERIFIED |
+| Docker contract exists but direct image build/run is not recorded | Environmental/operations: deployment command not externally verified | IMPLEMENTED — DESIGN/CONTRACT VERIFIED |
+| Private rate authority checks `MAX_BUY` before local booking authorization; negotiation-stage enforcement is not claimed | Code/scope: no App↔adapter pre-acceptance authority handshake | PARTIAL — VERIFIED AT LOCAL AUTHORIZATION/BOOKING BOUNDARY |
 | TLS transport absent | Code/scope: transport security not implemented | OUT OF SCOPE |
 | Automated negotiation engine absent | Code/scope: negotiation is not included | OUT OF SCOPE |
 | Health is liveness, not readiness | Code/contract: dependency readiness is not asserted | VERIFIED — LOCAL MOCK |

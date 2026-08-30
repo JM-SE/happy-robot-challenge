@@ -3,12 +3,13 @@ import { InMemoryBookingAttemptLedger, type BookingAttemptLedger } from "./attem
 import { bookingReceiptToPublic, recordToBookingReceipt, toBookLoadFields } from "./booking";
 import { bookingWriteDisposition, classifyBookingOutcome } from "./booking-outcome";
 import { isTmsAdapterError, TmsConfigurationError, TmsUpstreamError, TmsValidationError } from "./errors";
-import { parseLoadQueryInput, recordToPublicLoad, toLoadDetailFields, toLoadQueryFields } from "./loads";
+import { parseLoadQueryInput, recordToLoadInternal, toLoadDetailFields, toLoadQueryFields, toPublicLoad } from "./loads";
 import type { TmsCommandPolicy } from "./policy";
+import { createInternalMaxBuyRateAuthority, type BookingRateAuthority } from "./rate-authority";
 import { noReconciliationAuthority, type AuthoritativeReconciliationClassifier, type ReconciliationOutcome as AuthoritativeReconciliationOutcome } from "./real/reconciliation";
 import { buildRequest } from "./protocol";
 import { DEADLINE_PHASES, DeadlineBudget } from "./deadline";
-import type { BookLoadInput, LoadPublic, LoadQueryInput, TmsCommandRequest, TmsConfig, TmsParsedResponse } from "./types";
+import type { BookLoadInput, LoadInternal, LoadPublic, LoadQueryInput, TmsCommandRequest, TmsConfig, TmsParsedResponse } from "./types";
 
 export const CONTROLLED_BOOKING_TTL_MS = 30_000;
 export const MAX_COUNTEROFFERS = 3;
@@ -257,6 +258,7 @@ export class ControlledBookingWorkflow {
   private queryRun?: QueryRun;
   private selection?: SelectedLoad;
   private detailedLoad?: LoadPublic;
+  private detailedInternalLoad?: LoadInternal;
   private authorization?: ControlledBookingAuthorization;
 
   constructor(
@@ -267,6 +269,7 @@ export class ControlledBookingWorkflow {
     private readonly ttlMs = CONTROLLED_BOOKING_TTL_MS,
     private readonly ledger: BookingAttemptLedger,
     private readonly budget?: DeadlineBudget,
+    private readonly rateAuthority: BookingRateAuthority = createInternalMaxBuyRateAuthority(),
   ) {
     if (!ledger || (config.mode === "real" && (ledger instanceof InMemoryBookingAttemptLedger || typeof ledger.transition !== "function"))) {
       throw new TmsConfigurationError("A durable booking attempt ledger is required for this workflow.");
@@ -283,7 +286,7 @@ export class ControlledBookingWorkflow {
     const startedAt = this.now();
     const fields = await this.runBudget(DEADLINE_PHASES.MAPPING, () => toLoadQueryFields(approvedQuery));
     const response = await this.execute({ command: "LOAD_QUERY", fields, requestId: "phase-2c-query" }, DEADLINE_PHASES.MAPPING);
-    const candidates = await this.runBudget(DEADLINE_PHASES.MAPPING, () => response.records.map(recordToPublicLoad));
+    const candidates = await this.runBudget(DEADLINE_PHASES.MAPPING, () => response.records.map((record) => toPublicLoad(recordToLoadInternal(record))));
     if (new Set(candidates.map((candidate) => candidate.loadId)).size !== candidates.length) {
       throw new TmsUpstreamError("The query returned duplicate load identities.");
     }
@@ -307,11 +310,13 @@ export class ControlledBookingWorkflow {
     const fields = await this.runBudget(DEADLINE_PHASES.MAPPING, () => toLoadDetailFields({ loadId: this.selection!.selectedLoadId }));
     const response = await this.execute({ command: "LOAD_GET", fields, requestId: "phase-2c-detail" }, DEADLINE_PHASES.MAPPING);
     if (response.records.length !== 1) throw new TmsUpstreamError("Selected load detail must contain exactly one record.");
-    const load = await this.runBudget(DEADLINE_PHASES.MAPPING, () => recordToPublicLoad(response.records[0]!));
+    const internalLoad = await this.runBudget(DEADLINE_PHASES.MAPPING, () => recordToLoadInternal(response.records[0]!));
+    const load = toPublicLoad(internalLoad);
     assertSameIdentity(this.selection.selectedLoadId, load.loadId, "Detail load ID");
     assertMaterialDetail(this.selection, load);
     await this.runBudget(DEADLINE_PHASES.MAPPING, () => {
       this.detailedLoad = load;
+      this.detailedInternalLoad = internalLoad;
       this.state = "detailed";
     });
     return { load, operation: { operation: "LOAD_GET", result: { response, requestBytes: requestBytes(this.config, "LOAD_GET", fields), durationMs: Math.max(0, this.now() - startedAt) } } };
@@ -334,6 +339,8 @@ export class ControlledBookingWorkflow {
       throw new TmsValidationError("FMCSA validation proof is stale.");
     }
     if (bookingConfirmed !== true) throw new TmsConfigurationError("Real booking requires explicit 2C confirmation.");
+    if (!this.detailedInternalLoad) throw new TmsConfigurationError("Booking rate authority requires an internal load detail.");
+    this.rateAuthority.authorize({ loadId: this.selection.selectedLoadId, agreedRate: negotiation.agreedRate, load: this.detailedInternalLoad });
     this.authorization = new ControlledBookingAuthorization({ selection: this.selection, detail: this.detailedLoad, negotiation, carrier, expiresAt: this.queryRun.expiresAt }, this.policy, this.ledger, AUTHORIZATION_CREATION_TOKEN);
     this.state = "handoffs-validated";
     return this.authorization;
@@ -430,9 +437,9 @@ export class ControlledBookingWorkflow {
     try {
       const response = await this.execute({ command: "LOAD_GET", fields, requestId: "phase-2c-reconciliation" }, DEADLINE_PHASES.RECONCILIATION);
       if (response.records.length !== 1) throw new TmsUpstreamError("Reconciliation detail must contain exactly one record.");
-      const load = await this.runBudget(DEADLINE_PHASES.RECONCILIATION, () => recordToPublicLoad(response.records[0]!));
+      const load = await this.runBudget(DEADLINE_PHASES.RECONCILIATION, () => toPublicLoad(recordToLoadInternal(response.records[0]!)));
       assertSameIdentity(authorization.context.selection.selectedLoadId, load.loadId, "Reconciliation load ID");
-       await this.runBudget(DEADLINE_PHASES.RECONCILIATION, () => { this.state = "terminal"; });
+      await this.runBudget(DEADLINE_PHASES.RECONCILIATION, () => { this.state = "terminal"; });
       return {
         load,
           outcome: await this.runBudget(DEADLINE_PHASES.RECONCILIATION, () => classifier.classify(load)),

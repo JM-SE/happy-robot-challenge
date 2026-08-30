@@ -62,6 +62,7 @@ function loadResponse(loadId = "LOAD-1", status?: string) {
         DEST_CITY: "Los Angeles",
         EQTYPE: "DRY_VAN",
         RATE: "100",
+        MAX_BUY: "100",
         ...(status ? { STATUS: status } : {}),
       },
     }],
@@ -103,6 +104,26 @@ describe("Phase 2C booking workflow locally", () => {
     expect(result.booking.booking.loadId).toBe(selected);
     expect(server.requestCount).toBe(3);
     expect(server.dispatchCount).toBe(3);
+  });
+
+  it("rejects a rate above the private ceiling before authorization or booking side effects", async () => {
+    server = createMockLtmsServer({ port: 0, authToken: "token" });
+    const address = await server.start();
+    const config = realConfig(address);
+    const error = await runRealControlledBooking(config, {
+      query: { originState: "TX", maxResults: 1 },
+      runId,
+      sessionId,
+      selectedLoadId: "LOAD-1001",
+      selectionConfirmed: true,
+      negotiation: { loadId: "LOAD-1001", runId, sessionId, agreedRate: 2301, finalAccepted: true, counterofferCount: 1 },
+      carrier: { loadId: "LOAD-1001", runId, sessionId, mcNumber: "12345", validated: true, validatedAt: Date.now(), validationReference: "fmcsa-local" },
+      bookingConfirmed: true,
+    }, localCapability(), undefined, { ledger: testLedger() }).catch((caught) => caught);
+
+    expect(error).toMatchObject({ code: "RATE_NOT_ACCEPTED" });
+    expect(server.requestCount).toBe(2);
+    expect(server.dispatchCount).toBe(2);
   });
 
   it("requires explicit selection confirmation before detail", async () => {

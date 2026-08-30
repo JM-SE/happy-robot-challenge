@@ -2,13 +2,17 @@
 
 ## Current state
 
-Railway deployment exists by user confirmation. Railway is used as a hosting
-workaround because HappyRobot infrastructure could not host the app. External
-deployment smoke-test evidence is not recorded/not run. No public URL is
-included in this document.
+Railway deployment exists by user confirmation. Railway is used only as an
+adapter-hosting workaround because the intended HappyRobot Apps environment
+cannot currently ingest the repository. Railway is not evidence that the full
+HappyRobot App was deployed to HappyRobot Apps. External adapter evidence is
+limited to health and read-only TMS smoke; no exhaustive deployment smoke test
+or public URL is included in this document.
 
 The HappyRobot App is deployed/complete and its adapter connection is confirmed
-by the user. HappyRobot provider/dependency smoke tests and full
+by the user. The intended HappyRobot Apps repository import/deployment is
+currently blocked or unverified; a sanitized platform error screenshot may be
+added as external evidence. HappyRobot provider/dependency smoke tests and full
 business-capability evidence are not recorded.
 
 ## Required Railway service
@@ -35,6 +39,9 @@ Read-only/liveness deployment needs `PORT` from Railway; it is not set to a publ
 
 ## Planned post-deployment smoke checks
 
+These checks apply to the Railway-hosted adapter workaround only. They do not
+establish deployment or readiness of the intended HappyRobot Apps solution.
+
 Substitute the assigned private service URL for the literal placeholder:
 
 ```text
@@ -53,7 +60,8 @@ After the payload and authentication contract are approved, validate the
 connected HappyRobot App against the literal `<ADAPTER_BASE_URL>`. Use provider
 variable pickers, start non-mutating, and verify sanitized records and failure
 handling. The App connection is user-confirmed; provider/dependency smoke
-evidence remains unrecorded. Web Call and Inbound Voice Agent behavior are
+evidence remains unrecorded. HappyRobot Apps repository ingestion remains
+blocked/unverified. Web Call and Inbound Voice Agent behavior are
 **IMPLEMENTED — NOT CURRENTLY VERIFIED**. Provider/dependency smoke evidence
 and full business-capability evidence remain unrecorded. Do not configure real
 booking.

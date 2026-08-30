@@ -50,12 +50,18 @@ private data, and booking controls server-side.
 
 - FMCSA implementation inside the TMS adapter: **NOT INCLUDED BY OWNERSHIP**;
   FMCSA validation is in scope of and initiated by the HappyRobot App.
+- HappyRobot Apps repository import/deployment: **BLOCKED —
+  ORGANIZATION/ENVIRONMENT**; the current repository-ingestion error is not
+  evidence of a successful target deployment.
 - Automated negotiation engine: **OUT OF SCOPE**.
 - Web Call and Inbound Voice Agent behavior: **IMPLEMENTED — NOT CURRENTLY VERIFIED**; the App and adapter connection are user-confirmed, but provider/dependency smoke evidence is absent.
 - Real booking/real `LOAD_BOOK`: **NOT IMPLEMENTED**.
 - OTP SMS/email delivery: **BLOCKED — ORGANIZATION/ENVIRONMENT**.
 - Twin/data layer: **BLOCKED — ORGANIZATION/ENVIRONMENT** because the
   organization DB quota was exceeded.
+- Native HappyRobot Apps operational UI and durable Twin-backed activity
+  capture: **NOT VERIFIED**; this repository contains only a sanitized local
+  Operations UI projection.
 - TLS transport: **OUT OF SCOPE** for this build.
 - Durable operational storage and real-booking rollback/reconciliation:
   **OUT OF SCOPE**.
@@ -80,7 +86,10 @@ private data, and booking controls server-side.
    details remain excluded.
 7. A controlled negotiation workflow may collect explicit offers and final
    acceptance, with at most three counteroffer rounds in the code/spec
-   context. External voice execution is not claimed.
+   context. Before booking authorization is issued, a private rate authority
+   checks the agreed rate against internal `MAX_BUY`; mock booking retains the
+   same check as defense in depth. This does not claim to block a HappyRobot
+   final-acceptance decision before the adapter handoff.
 8. Mock booking returns a deterministic demo result locally. Real mode rejects
    booking with HTTP 403 `REAL_BOOKING_DISABLED` before TMS access.
 9. The connected App's call-record handoff may feed the temporary in-memory
@@ -189,8 +198,10 @@ three counteroffer rounds. It does not establish that a voice agent executed
 those rounds externally, nor does it claim an autonomous negotiation engine.
 
 The final accepted load must remain bound to the selected load, and the final
-agreed rate must pass public validation. Any authority, provider, or external
-approval policy remains to be defined and approved.
+agreed rate must pass public validation plus the private rate-authority check
+before booking authorization. This quick policy is enforced at the local
+authorization/booking boundary; a future App↔adapter pre-acceptance authority
+handshake would be required to claim enforcement inside HappyRobot negotiation.
 
 ## 12. MAX_BUY/MAX_RATE confidentiality
 
@@ -198,7 +209,9 @@ approval policy remains to be defined and approved.
 never be documented as public data, returned, logged, or exposed to a caller.
 The public HTTP validation ceiling is `MAX_RATE = 1,000,000` for `agreedRate`.
 These are distinct: this report does not reveal or infer the internal
-purchase-ceiling value.
+purchase-ceiling value. The private rate authority rejects a rate above the
+selected load's ceiling before authorization without returning the ceiling or
+its value to the caller.
 
 ## 13. Booking safety gates/status
 
@@ -223,10 +236,11 @@ the handoff payload.
 
 ## 15. Operational UI
 
-The Operations UI is a temporary process-local in-memory projection and may
-display fallback/demo data. It is **IMPLEMENTED — NOT CURRENTLY VERIFIED** as
-an externally integrated operational surface. It is non-persistent and is not
-evidence of HappyRobot, TMS, or Twin connectivity.
+The Operations UI is a sanitized custom Next.js, process-local in-memory
+projection and may display fallback/demo data. It is **PARTIAL — DEMO/LOCAL
+PROJECTION**, not a native HappyRobot Apps surface, and is not evidence of
+HappyRobot, TMS, or Twin connectivity. It is non-persistent; no browser or
+visual acceptance evidence is recorded.
 
 ## 16. Twin/data layer
 
@@ -251,17 +265,23 @@ operational result are therefore not claimed.
 
 ## 18. Deployment model
 
-The intended deployment is one Railway service using the multi-stage
-`node:22-alpine` Dockerfile. It runs `npm ci`, `npm run build`, production
-`npm ci --omit=dev`, and the direct Next command. Railway supplies dynamic
-`PORT` with a fallback of 3000. `railway.json` uses `/api/health`, a 10-second
-timeout, and restart-on-failure with a maximum of three retries.
+The repository contains a multi-stage `node:22-alpine` Dockerfile. It runs
+`npm ci`, `npm run build`, production `npm ci --omit=dev`, and the direct Next
+command as a non-root runtime. The image accepts Railway's dynamic `PORT` with
+a fallback of 3000. This establishes the container build design and contract;
+no direct `docker build`/`docker run` evidence is recorded here.
 
-Railway deployed? **YES, by user confirmation.** No public URL is recorded in
-this documentation. Railway is used as a hosting workaround because
-HappyRobot infrastructure could not host the app. User-supplied external
-smoke evidence is limited to health and successful real read-only TMS probes;
-it is not exhaustive.
+The intended product deployment target is HappyRobot Apps, including repository
+ingestion/import. That target is currently **BLOCKED — ORGANIZATION/ENVIRONMENT**
+because HappyRobot Apps cannot currently ingest this repository; the platform
+error screenshot is pending. A one-command deployment claim for the full
+HappyRobot solution is therefore not established.
+
+Railway is an adapter-only hosting workaround, not proof of HappyRobot Apps
+deployment. `railway.json` uses `/api/health`, a 10-second timeout, and
+restart-on-failure with a maximum of three retries. Railway deployment is
+**YES, by user confirmation**, with limited health/read-only smoke evidence;
+no public URL or exhaustive deployment evidence is recorded.
 
 ## 19. Health/readiness
 
@@ -293,7 +313,9 @@ real-booking rollback/reconciliation procedure.
 The following are proposed/defined measurement targets, not repository or
 external results:
 
-- Search-to-qualified-load completion rate.
+- **Primary North Star:** search-to-qualified-load completion rate, defined as
+  qualified-load outcomes divided by eligible call/workflow starts. No
+  production denominator or result is currently available.
 - Detail retrieval success rate by mode.
 - Explicit final-confirmation rate before booking handoff.
 - Counteroffer rounds per accepted negotiation, capped at three.
@@ -310,8 +332,11 @@ external results:
 | Auth, validation, request IDs, sanitized envelopes | implemented and verified | VERIFIED — LOCAL MOCK | Supplied local security/contract evidence |
 | Real read-only `LOAD_QUERY`/`LOAD_GET` | code-ready with limited external smoke | VERIFIED — LIMITED REAL READ-ONLY SMOKE | Railway real read-only smoke succeeded for one search/detail sample; request IDs and payload summaries are recorded below; not exhaustive |
 | HappyRobot App connection/handoff | implemented locally only | IMPLEMENTED — NOT CURRENTLY VERIFIED | User-confirmed complete/deployed/connected; provider/dependency smoke evidence not recorded |
-| Operations UI projection | implemented locally only | IMPLEMENTED — NOT CURRENTLY VERIFIED | Temporary process-local in-memory projection; fallback/demo data possible |
-| Docker/Railway deployment model | implemented locally only | IMPLEMENTED — NOT CURRENTLY VERIFIED | User-confirmed Railway deployment; limited health/read-only external smoke recorded, but deployment behavior is not exhaustively verified |
+| Operations UI projection | custom Next.js local projection | PARTIAL — DEMO/LOCAL PROJECTION | Sanitized and non-persistent; not a native HappyRobot Apps/Twin surface; no browser visual evidence |
+| Rate ceiling | private authority before local booking authorization | PARTIAL — VERIFIED AT LOCAL AUTHORIZATION/BOOKING BOUNDARY | MAX_BUY is confidential and checked before authorization; negotiation/pre-final-acceptance enforcement is not claimed |
+| Docker image | repository container artifact | IMPLEMENTED — DESIGN/CONTRACT VERIFIED | Multi-stage Dockerfile and deployment contract are present; direct image build/run not evidenced |
+| HappyRobot Apps deployment/import | intended full product target | BLOCKED — ORGANIZATION/ENVIRONMENT | Apps cannot currently ingest the repository; screenshot evidence pending |
+| Railway adapter workaround | adapter hosting only | IMPLEMENTED — NOT CURRENTLY VERIFIED | User-confirmed deployment with limited health/read-only smoke; not full HappyRobot deployment evidence |
 | Real `LOAD_BOOK`/public real booking | not implemented | NOT IMPLEMENTED | Guarded HTTP 403; never executed; no real `LOAD_BOOK` evidence |
 | Web Call / Inbound Voice Agent | implemented locally only | IMPLEMENTED — NOT CURRENTLY VERIFIED | App and adapter connection are user-confirmed; provider/dependency smoke and full business-capability evidence are not recorded |
 | FMCSA validation | HappyRobot App direct-request capability; not implemented in the adapter | IMPLEMENTED — NOT CURRENTLY VERIFIED | No successful verifiable result captured for MC 872144; controlled real process blocked; MC validity not determined |
@@ -360,14 +385,21 @@ task.
 5. Book a local mock load with `mc` and a valid rate; verify deterministic demo
    output and no TCP dependency.
 6. Reject `mcNumber`, malformed load IDs, invalid rates, and unsupported keys.
-7. Exercise local 404, 409, and 422 booking domain errors.
-8. In real mode, submit booking and verify HTTP 403
+7. Reject a rate above the private selected-load ceiling before booking
+   authorization, ledger consumption, or TCP dispatch; verify no ceiling value
+   leaks in the error. The mock booking state keeps the same check as defense
+   in depth.
+8. Exercise local 404, 409, and 422 booking domain errors.
+9. In the intended App flow, require FMCSA validation, then OTP verification,
+   before load matching. This ordering is defined but cannot be externally
+   executed while the OTP provider/gate is unavailable.
+10. In real mode, submit booking and verify HTTP 403
    `REAL_BOOKING_DISABLED` before any TMS access.
-9. Verify health returns liveness only, no auth requirement, no external I/O,
+11. Verify health returns liveness only, no auth requirement, no external I/O,
    and rejects non-GET methods.
-10. Validate fragmented CRLF byte-stream handling, terminal `END`, peer close,
-    one socket/request, and sanitized transport errors against a local mock TCP
-    server.
+12. Validate fragmented CRLF byte-stream handling, terminal `END`, peer close,
+   one socket/request, and sanitized transport errors against a local mock TCP
+   server.
 
 ## 25. Adversarial QA scenarios
 
@@ -375,6 +407,8 @@ task.
   wrong content types.
 - Attempt `mcNumber` substitution, negative/NaN/infinite/over-maximum rates,
   and a rate with more than two decimals.
+- Attempt to exceed the private `MAX_BUY` ceiling or infer it from an error;
+  verify rejection before authorization/ledger/TCP side effects and no leakage.
 - Attempt unauthorized, retried, or out-of-order booking requests.
 - Try to reach real booking with every real-mode control combination; verify
   fail-closed behavior and zero TMS booking reachability.
@@ -386,15 +420,16 @@ task.
 - Confirm health cannot be interpreted as dependency readiness.
 - Confirm fallback/demo Operations UI data is not represented as external
   integration evidence.
+- Do not represent fixture OTP/FMCSA statuses as execution of the required
+  FMCSA → OTP → load-matching sequence while the App providers are unavailable.
 
 ## 26. Exact test commands and verified results
 
-The following evidence was supplied by project context and was not rerun for
-this documentation task:
+The following checks were run and verified during this implementation run:
 
 | Command/check | Supplied result |
 |---|---|
-| `npm test` / Vitest | 46 test files; 310 tests passing |
+| `npm test` / Vitest | 50 test files; 338 tests passing |
 | `npm run typecheck` | Passed |
 | `npm run lint` | Passed |
 | `npm run build` | Passed |
@@ -403,17 +438,19 @@ this documentation task:
 | Booking zero-reachability checks | Passed |
 | Local mock coverage | Exists, including echo/search/detail/booking |
 
-The repository identifies Node 22, TypeScript, Vitest, Next.js 16.2.9, and
+The repository identifies Node 22, TypeScript, Vitest, Next.js 16.3.3, and
 React 19.2.7 as the relevant runtime/tooling context.
 
 ## 27. Tests not run
 
-Not run/not evidenced: exhaustive Railway deployment/integration smoke tests,
-HappyRobot provider smoke tests, exhaustive real-TMS probes, real `LOAD_BOOK`, OTP delivery, and Twin
-verification. Railway deployment exists by user confirmation; HappyRobot App
-completion/connection is user-confirmed. Limited real read-only TMS smoke is
-evidenced above; broader connectivity remains **IMPLEMENTED — CURRENTLY UNDER
-INVESTIGATION**. Real `LOAD_BOOK` executed? No.
+Not run/not evidenced: direct Docker image build/run, intended HappyRobot Apps
+repository deployment/import, HappyRobot provider smoke tests, browser/visual
+UI QA, exhaustive real-TMS probes, real `LOAD_BOOK`, OTP delivery, and Twin
+verification. Railway deployment exists by user confirmation as an adapter
+workaround; HappyRobot App completion/connection is user-confirmed, but the
+intended Apps repository ingestion remains blocked/unverified. Limited real
+read-only TMS smoke is evidenced above; broader connectivity remains
+**IMPLEMENTED — CURRENTLY UNDER INVESTIGATION**. Real `LOAD_BOOK` executed? No.
 
 Local route-composition tests using a mock TCP server are not real-TMS
 evidence. No test result in this report should be read as external provider or
@@ -429,15 +466,21 @@ deployment confirmation.
   connected by user confirmation; remaining contract/mapping questions,
   provider/dependency smoke evidence, and full business-capability evidence are
   unrecorded.
+- The private rate authority is verified at the local authorization/booking
+  boundary, but it does not prove enforcement before HappyRobot's negotiation
+  acceptance. A future App↔adapter pre-acceptance authority handshake may be
+  required.
 - FMCSA validation is in scope of the HappyRobot App, but no successful
   verifiable result was captured for MC 872144; the controlled real process is
   blocked. The adapter does not implement FMCSA and does not accept MC format
   as proof. OTP remains unavailable.
 - Twin is blocked by organization DB quota.
-- Operations data is in-memory and non-persistent.
-- Railway deployment exists by user confirmation, with limited external
-  health/read-only smoke evidence; Railway and Docker behavior are not
-  exhaustively smoke-tested/evidenced.
+- Operations data is in-memory and non-persistent; the custom UI is not a
+  native HappyRobot Apps surface and is not Twin evidence.
+- HappyRobot Apps repository ingestion/deployment is blocked or unverified.
+- Railway is only an adapter workaround with limited external health/read-only
+  smoke evidence; Docker direct build/run and full one-command cloud deployment
+  are not exhaustively evidenced.
 - TLS is not implemented.
 - Pickup-date business semantics are unspecified.
 
@@ -445,8 +488,10 @@ deployment confirmation.
 
 - Treating local mock results or UI demo data as external success.
 - Enabling real booking without approved TMS, authorization, ledger, and
-  reconciliation procedures.
+   reconciliation procedures.
 - Misbinding a booking to a different load or accepting an unconfirmed rate.
+- Treating the local rate-authority check as enforcement inside HappyRobot's
+  pre-acceptance negotiation when no App↔adapter authority handshake exists.
 - Leaking secrets, private notes, full MC data, raw transcripts, or internal
   purchase policy through logs or handoffs.
 - Interpreting liveness as readiness.
@@ -468,8 +513,8 @@ deployment confirmation.
 5. Confirm the HappyRobot App FMCSA request path and record a reliable, fresh,
    identity-bound, auditable result for MC 872144 (or an approved carrier);
    do not infer invalidity from the current missing result.
-6. Extend the deployed Railway health/auth/read-only smoke suite beyond the
-   current point sample; do not redeploy from scratch.
+6. Resolve HappyRobot Apps repository ingestion/deployment and attach the
+   sanitized platform error screenshot; do not treat Railway as full-App proof.
 7. Replace the temporary in-memory projection with an approved durable data
    design before operational reliance.
 8. Re-run local and external QA with evidence recorded separately for each
@@ -477,8 +522,12 @@ deployment confirmation.
 
 ## Manual-confirmation checklist for brokerage reviewers
 
-- [ ] Railway deployed? **YES, by user confirmation**; no public URL is recorded
-      in these docs. Validate the deployed service and attach smoke evidence.
+- [ ] Docker image built and run directly? Current answer: **Not evidenced**.
+- [ ] HappyRobot Apps repository deployment/import? Current answer: **Blocked —
+      ORGANIZATION/ENVIRONMENT**; attach the sanitized platform error screenshot.
+- [ ] Railway adapter workaround deployed? **YES, by user confirmation**; no
+      public URL is recorded in these docs. This is not full-App deployment
+      evidence.
 - [ ] Public URL and TLS contract approved and recorded.
 - [ ] Real TMS connectivity broadly verified? Limited health/echo/read-only
       smoke evidence is recorded; broader status remains **IMPLEMENTED —
@@ -488,6 +537,9 @@ deployment confirmation.
       without written authorization.
 - [ ] Selected-load binding and explicit final confirmation reviewed.
 - [ ] Maximum three counteroffer rounds confirmed in the operating procedure.
+- [ ] Private rate ceiling checked before local booking authorization? Current
+      answer: **PARTIAL — VERIFIED AT LOCAL AUTHORIZATION/BOOKING BOUNDARY**;
+      pre-acceptance HappyRobot enforcement is not claimed.
 - [ ] HappyRobot App FMCSA request, consent/audit trail, freshness, and
       carrier/session identity-binding policy approved; current status remains
       **IMPLEMENTED — NOT CURRENTLY VERIFIED** with no result captured for MC
@@ -497,8 +549,10 @@ deployment confirmation.
 - [ ] Twin available? Current answer is **No**;
       **BLOCKED — ORGANIZATION/ENVIRONMENT**.
 - [ ] Adapter connected to HappyRobot App? **YES, by user confirmation**.
-- [ ] HappyRobot App deployed? **YES/implemented and connected, by user
-      confirmation**; provider/dependency smoke evidence is still required.
+- [ ] HappyRobot App workflow/connection? **Implemented and connected by user
+      confirmation**; intended Apps repository deployment/import remains
+      **BLOCKED — ORGANIZATION/ENVIRONMENT** and provider/dependency smoke
+      evidence is still required.
 - [ ] HappyRobot Web Call/Inbound Voice Agent smoke evidence obtained; current
        status remains **IMPLEMENTED — NOT CURRENTLY VERIFIED**.
 - [ ] Senior representative handoff fields approved without secrets, full MC,
