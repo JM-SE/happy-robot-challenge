@@ -1,89 +1,73 @@
-# HappyRobot LTMS Adapter — Phase 2A/2B/2C/4 Operations
+# HappyRobot LTMS Adapter
 
-This repository contains the first, minimal vertical slice of the carrier-sales TMS adapter:
+Next.js HTTP adapter for a carrier-sales workflow. It provides a narrow authenticated boundary to a local deterministic TMS mock and a guarded server-only TCP read path.
+
+**Current status:** local mock behavior is **VERIFIED — LOCAL MOCK**. The HappyRobot App is deployed/complete and connected to the adapter by user confirmation; the authenticated handoff and real read-only adapter behavior remain **IMPLEMENTED — NOT CURRENTLY VERIFIED** where external smoke evidence is absent. Railway deployment exists by user confirmation as a hosting workaround because HappyRobot infrastructure could not host the app; no public URL or external smoke-test evidence is recorded. Real booking is disabled; real `LOAD_BOOK` was never executed.
+
+Documentation: [build description](docs/build-description.md) · [integration status](docs/integration-status.md) · [API contract](docs/api-contract.md) · [limitations](docs/limitations.md) · [Railway](docs/deployment/railway.md) · [build description and QA report](docs/deliverables/build-description-and-qa-report.md)
+
+## Architecture and responsibilities
 
 ```text
-HTTP Route Handler → node:net → local LTMS mock
+HappyRobot App (implemented and connected; limitations apply)
+  → authenticated HTTP handoff
+  → Railway-hosted Next.js adapter
+  → local mock or guarded node:net TMS client
 ```
 
-Phase 1A–1D remains the local baseline. Phase 2A adds an explicitly opt-in validation track for the authorized candidate TMS using `DEBUG_ECHO`; Phase 2B adds separately guarded read-only probes for `LOAD_QUERY` and `LOAD_GET`; Phase 2C adds a locally verified, separately gated controlled-booking workflow whose real booking remains blocked pending final approval. Phase 4 adds a protected, read-only Operations dashboard backed by a temporary local projection. HappyRobot/voice UI, FMCSA integration, persistence and deployment remain out of scope.
+HappyRobot is expected to own voice/call orchestration, carrier/FMCSA/OTP/negotiation handoffs, and a call-record webhook. The adapter owns authentication, closed request validation, TCP framing, safe mapping, error envelopes, safety guards, and liveness. The Operations UI is a temporary process-local in-memory projection.
 
-## Requirements
+The internal protocol is a TCP byte stream with CRLF framing, `END` plus peer-close completion, one socket per request, and `DEBUG_ECHO`, `LOAD_QUERY`, `LOAD_GET`, and `LOAD_BOOK` commands. Tokens and wire payloads are server-only. TLS is not implemented.
 
-- Node.js 22+ recommended
-- npm
+## Local setup
 
-## Install and configure
+Requirements: Node.js 22+ and npm.
 
 ```powershell
 npm install
 Copy-Item .env.example .env.local
-```
-
-The TMS settings are server-only: `TMS_HOST`, `TMS_PORT` (1–65535), `TMS_AUTH_TOKEN`, `TMS_CONNECT_TIMEOUT_MS`, `TMS_RESPONSE_TIMEOUT_MS` and optional `TMS_MAX_FRAME_BYTES` (default `4096`). Never use `NEXT_PUBLIC_` for them. The `TMS_MOCK_*` variables affect only the local mock CLI. Real mode additionally requires the exact activation triple documented below.
-
-## Run locally
-
-Terminal 1:
-
-```bash
 npm run mock:tms
-```
-
-Terminal 2:
-
-```bash
+# in another terminal
 npm run dev
 ```
 
-Then, from PowerShell, use `Invoke-RestMethod` to avoid shell quoting differences:
+All values in `.env.example` are server-only; never use `NEXT_PUBLIC_*`. Mock mode is the default (`ADAPTER_MODE=mock`).
 
-```powershell
-$body = @{ message = 'hello' } | ConvertTo-Json -Compress
-Invoke-RestMethod 'http://localhost:3000/api/tms/echo' -Method Post -ContentType 'application/json' -Body $body
-```
+## Environment variables
 
-Expected shape:
+The actual names in `.env.example` are: `TMS_HOST`, `TMS_PORT`, `TMS_AUTH_TOKEN`, `TMS_CONNECT_TIMEOUT_MS`, `TMS_RESPONSE_TIMEOUT_MS`, `TMS_MAX_FRAME_BYTES`, `ADAPTER_MODE`, `ADAPTER_SHARED_SECRET`, `REAL_BOOKING_ENABLED`, `TMS_MOCK_SCENARIO`, `TMS_MOCK_DELAY_MS`, and `TMS_MOCK_FRAGMENT_SIZE`. Real read-only validation additionally uses the commented, approved-control names `TMS_MODE`, `TMS_ENV`, `TMS_REAL_ENABLED`, `TMS_REAL_TARGET_PIN`, `TMS_REAL_TARGET_ALLOWLIST`, `TMS_REAL_TRANSPORT_APPROVED`, `TMS_REAL_AUTHORITY_HOST`, `TMS_REAL_AUTHORITY_PORT`, `TMS_REAL_ECHO_EXTRAS`, and `TMS_REAL_ECHO_AUTH_INVALID`.
 
-```json
-{"ok":true,"data":{"message":"hello","fieldCount":3}}
-```
+Use `ADAPTER_MODE=mock` for local deterministic behavior. Real read-only mode is opt-in with status **IMPLEMENTED — CURRENTLY UNDER INVESTIGATION**; it does not authorize booking. `REAL_BOOKING_ENABLED=false` is the booking guard, and real booking fails closed with `REAL_BOOKING_DISABLED` before TMS access. Never commit secrets or use `NEXT_PUBLIC_*`.
 
-## Read-only loads
+## HTTP API
 
-Search requires at least one filter. Supported filters are `originState`, `destinationState`, `originCity`, `destinationCity`, `originZip`, `destinationZip` and `equipmentType`; `maxResults` is optional and capped at 50. ZIP values are framed safely without assuming an undocumented width.
+All TMS routes require `POST`, `Content-Type: application/json`, and `x-adapter-api-key` matching server-only `ADAPTER_SHARED_SECRET`. TMS `GET` requests return 405 with `Allow: POST`. Request IDs are returned in `meta.requestId` and `x-request-id`.
 
-```powershell
-curl -X POST http://localhost:3000/api/tms/loads/search `
-  -H "content-type: application/json" `
-  -d '{"originState":"tx","equipmentType":"dry_van","maxResults":5}'
-```
+| Method | Path                    | Request                                                              |
+| ------ | ----------------------- | -------------------------------------------------------------------- |
+| POST   | `/api/tms/echo`         | exact `{message:string}`                                             |
+| POST   | `/api/tms/loads/search` | `originState?`, `destinationState?`, `equipmentType?`, `maxResults?` |
+| POST   | `/api/tms/loads/detail` | exact `{loadId:string}`                                              |
+| POST   | `/api/tms/loads/book`   | exact `{loadId,mc,agreedRate}`                                       |
+| GET    | `/api/health`           | unauthenticated liveness                                             |
 
-Get one load by ID:
+Search requires one filter, accepts no city/ZIP HTTP keys, uppercases states/equipment, and defaults `maxResults` to 10 (range 1–50). Detail IDs are max 64 characters. Booking rates are finite, positive, ≤1,000,000, and max two decimals; `mc` is max 64 characters. `mcNumber` is outdated documentation; `mc` is authoritative.
 
-```powershell
-curl -X POST http://localhost:3000/api/tms/loads/detail `
-  -H "content-type: application/json" `
-  -d '{"loadId":"LOAD-1001"}'
-```
+Success: `{ok:true,data,meta:{requestId}}`. Adapter errors: `{ok:false,error:{code,message,retryable},meta:{requestId}}`. Health differs: `{status:"ok"}` with `Cache-Control: no-store`; POST/OPTIONS return 405. See the [full contract](docs/api-contract.md).
 
-Both endpoints return `{ "ok": true, "data": ... }` on success. The internal `MAX_BUY` field is intentionally removed before the HTTP response. ASCII padding around wire fields is trimmed; state codes and equipment types are normalized to uppercase while internal city spacing is preserved.
+Public loads contain `loadId`, origin/destination states and cities, `equipmentType`, `rate`, and optional `pickupDate`, `miles`, and `status`. Pickup-date business semantics are unspecified. Private notes, raw wire data, tokens, and internal purchase-limit policy details are never public. The internal purchase ceiling is enforced server-side and omitted from responses, logs, and documentation.
 
-## Stateful booking
+## Modes and booking
 
-Book a load with the exact public fields `loadId`, `mcNumber` and `agreedRate`:
+Mock booking may return a deterministic `{booking:{bookingRef,loadId,agreedRate,bookedAt,mode:"mock",demo:true}}` result without opening TCP. Real mode fails closed with HTTP 403 `REAL_BOOKING_DISABLED` before any booking port or TMS access. Real `LOAD_BOOK` has never been executed and no approved real `LOAD_ID` exists.
 
-```powershell
-curl -X POST http://localhost:3000/api/tms/loads/book `
-  -H "content-type: application/json" `
-  -d '{"loadId":"LOAD-1001","mcNumber":"12345","agreedRate":2200}'
-```
+The real read-only adapter path exists behind approved controls, but current endpoint behavior is **IMPLEMENTED — CURRENTLY UNDER INVESTIGATION**; local route-composition tests using a mock TCP server are not real-TMS verification. **Known unresolved endpoint issue: real `LOAD_QUERY`/`LOAD_GET` behavior is not verified and no approved real `LOAD_ID` exists.**
 
-The mock transitions each load from `AVAILABLE` to `BOOKED`, returns a booking reference and an ISO-8601 UTC timestamp, and rejects a second booking with `409 ALREADY_BOOKED`. The mock also applies the internal `MAX_BUY` policy to reject an excessive agreed rate with `422 INVALID_RATE`; the threshold is never returned publicly.
+## Health, readiness, and security
 
-Booking has no automatic retry. If a timeout, connection failure or upstream `SERVER_ERROR` occurs after the request was sent, the result is considered uncertain and the caller must not submit a second booking automatically; these booking errors are exposed with `retryable: false`.
+`GET /api/health` is liveness only; it does not prove TMS, HappyRobot, or Railway readiness. Readiness is an internal pure evaluator with invalid-environment, shutting-down, and resource-limit reasons. Never put secrets, MC data, rates, IDs, or handoff payloads in source, URLs, browser variables, reports, or logs.
 
-## Tests
+## Docker, Railway, and provisional HappyRobot handoff
 
 ```bash
 npm test
@@ -92,149 +76,10 @@ npm run lint
 npm run build
 ```
 
-The tests cover the request builder, incremental `Buffer` parser, arbitrary chunk boundaries, strict CRLF framing, multiple records, `END`/`ERR`, byte limits, timeouts, socket cleanup, lifecycle races, new connections per request, echo/load/booking route validation, public/internal load mapping, state transitions, configurable fault scenarios, real local TCP integration, Operations sanitization, summary calculations, fixture determinism, response allowlists and filter serialization. `npm test` never opens a real-TMS connection.
+Current evidence is 46 test files and 310 passing tests, plus passing typecheck/lint/build/security and zero-reachability checks. Deployment/integration smoke tests were not run or are not evidenced. Docker uses a Node 22 Alpine multi-stage build and a dynamic Railway `PORT`; `railway.json` uses `/api/health`. Railway deployment exists by user confirmation as a hosting workaround because HappyRobot infrastructure could not host the app. Use literal `<ADAPTER_BASE_URL>` for webhook and smoke-test instructions in [Railway](docs/deployment/railway.md).
 
-## Operations dashboard
+Docker usage: `docker build -t happyrobot-ltms-adapter .` then `docker run --rm -p 3000:3000 --env-file .env.local happyrobot-ltms-adapter`. Railway uses the Dockerfile builder; see the [Railway handoff](docs/deployment/railway.md) for provisional setup.
 
-The protected pages are `/operations` and `/operations/calls/[callId]`. The Operations API routes are:
+HappyRobot App integration is user-confirmed complete and connected; Web Call and Inbound Voice Agent are **IMPLEMENTED — NOT CURRENTLY VERIFIED** because external provider/dependency smoke evidence remains unrecorded. Configure or validate webhook behavior only against the approved contract, using the literal `<ADAPTER_BASE_URL>` and a non-mutating smoke test. OTP delivery is unavailable; Twin is unavailable because organization DB quota was exceeded; FMCSA is out of scope/not live; real TMS endpoint behavior remains under investigation; real booking is disabled and there is no real-booking rollback/reconciliation procedure. The Operations UI is temporary, in-memory, and non-persistent.
 
-| Method | Route | Purpose |
-| --- | --- | --- |
-| POST | `/api/operations/auth/login` | Create the UI session cookie |
-| POST | `/api/operations/auth/logout` | Clear the UI session cookie |
-| POST | `/api/operations/calls` | Ingest one handoff-shaped call record |
-| GET | `/api/operations/calls` | List sanitized call records |
-| GET | `/api/operations/calls/[callId]` | Read one sanitized call detail |
-| GET | `/api/operations/summary` | Read calculated dashboard KPIs |
-
-Ingestion uses the server-only `ADAPTER_SHARED_SECRET` in the `X-Adapter-API-Key` header. Dashboard pages and GET APIs use the separate server-only `OPERATIONS_UI_SECRET` through the `operations_session` cookie. Neither secret belongs in `NEXT_PUBLIC_*`, browser code, query parameters, request bodies, examples, logs or responses.
-
-For a deterministic local demonstration, set `ADAPTER_UI_DATA_MODE=fixture`; this creates eight local demo records. Safe configuration names are:
-
-```text
-ADAPTER_UI_DATA_MODE=fixture
-ADAPTER_SHARED_SECRET=<local-or-deployment-secret>
-OPERATIONS_UI_SECRET=<local-or-deployment-secret>
-```
-
-The ingestion payload keeps the exact handoff field names: `callId`, `occurredAt`, `mcNumber`, `fmcsaverified`, `otpVerified`, `bookingSuccessful`, `bookingRef`, `outcome`, `handoffReason`, `notes`, `mode`, `technicalStatus`, and optional `loadId`, `agreedRate`, `origin`, `destination`, `equipment`, and `publishedRate`. Missing or `null` `loadId`/`agreedRate` means no match/no rate. The sanitizer derives `mcMasked`, `fmcsaStatus`, `otpStatus`, `bookingStatus`, `handoffStatus`, `matchedLoads` and `bookingReference`; list responses omit `notes` and `handoffReason`, while detail may include only bounded sanitized values.
-
-For HappyRobot AI Extract, use the variable picker for each mapping: `response.mcNumber` to `mcNumber`, `response.loadId` to `loadId`, `response.agreedRate` to `agreedRate`, `response.fmcsaverified` to `fmcsaverified`, `response.otpVerified` to `otpVerified`, `response.bookingSuccessful` to `bookingSuccessful`, `response.bookingRef` to `bookingRef`, `response.outcome` to `outcome`, `response.handoffReason` to `handoffReason`, and `response.notes` to `notes`. Map `response.callId` and `response.occurredAt` when supplied, plus only the safe enrichment scalars `response.origin`, `response.destination`, `response.equipment` and `response.publishedRate` when implemented. Do not use hardcoded `@` expressions; the adapter does not own AI Extract.
-
-Demo records are displayed as `Demo/Mock`. `real-read-only` is displayed as `Real Read-Only` and never authorizes booking. The dashboard exposes no booking, cancel, retry or other mutation control. OTP delivery is unavailable, Twin provisioning is unavailable and the real `LOAD_BOOK` path remains disabled.
-
-## Authorized real-TMS validation (Phase 2A)
-
-The real track is disabled by default. It may run only against the authorized candidate non-production instance and only for `DEBUG_ECHO`. `npm test` never opens a real-TMS connection.
-
-Set the following variables in the process environment using the authorized secret channel. Do not put real values in `.env.example`, source code, reports or shared terminal output:
-
-```text
-TMS_MODE=real
-TMS_ENV=non-production
-TMS_REAL_ENABLED=true
-TMS_HOST=<authorized host>
-TMS_PORT=<authorized port>
-TMS_AUTH_TOKEN=<authorized token>
-TMS_CONNECT_TIMEOUT_MS=<bounded timeout>
-TMS_RESPONSE_TIMEOUT_MS=<bounded timeout>
-```
-
-PowerShell:
-
-```powershell
-$env:TMS_MODE = 'real'
-$env:TMS_ENV = 'non-production'
-$env:TMS_REAL_ENABLED = 'true'
-# Inject TMS_HOST, TMS_PORT and TMS_AUTH_TOKEN through the authorized environment.
-npm run test:real-tms:echo
-```
-
-Git Bash:
-
-```bash
-export TMS_MODE=real
-export TMS_ENV=non-production
-export TMS_REAL_ENABLED=true
-# Inject TMS_HOST, TMS_PORT and TMS_AUTH_TOKEN through the authorized environment.
-npm run test:real-tms:echo
-```
-
-The runner fails closed if the exact activation flags or required configuration are missing. It sends one ASCII `DEBUG_ECHO` request per connection, never retries, never runs `LOAD_QUERY`, `LOAD_GET` or `LOAD_BOOK`, and writes only sanitized metadata to `reports/tms/phase-2a/real-debug-echo.json` after a successful probe. Optional probes are disabled by default:
-
-```powershell
-$env:TMS_REAL_ECHO_EXTRAS = 'true'        # also probes X/Y/Z and expects FIELDS_PARSED=6
-$env:TMS_REAL_ECHO_AUTH_INVALID = 'true' # only when explicitly authorized
-```
-
-The real TMS handbook is `HR-LTMS-PR-001`. Its successful response uses the marker `ECHO` and fields `AUTH:OK`, `FIELDS_PARSED` and `MSG`; the public API continues returning only `{ message, fieldCount }`. A successful `DEBUG_ECHO` validates transport, authentication and parsing only. It does not validate operational commands or real fault injection.
-
-## Authorized real-TMS validation (Phase 2B read-only loads)
-
-Phase 2B is a separate opt-in track. It permits only `LOAD_QUERY` and `LOAD_GET` in addition to `DEBUG_ECHO`; it never executes `LOAD_BOOK`. The local `npm test` command never opens a real-TMS connection.
-
-In PowerShell, configure the approved query and optionally an approved load ID through the authorized runtime environment, without putting real values in source, reports or shared output:
-
-```powershell
-$env:TMS_MODE = 'real'
-$env:TMS_ENV = 'non-production'
-$env:TMS_REAL_ENABLED = 'true'
-$env:TMS_REAL_LOAD_QUERY_JSON = '{"originState":"TX","maxResults":1}'
-# Optional: $env:TMS_REAL_LOAD_ID = '<approved load id>'
-npm run test:real-tms:loads
-```
-
-The query input must be approved runtime data, not a value invented for compatibility testing. A query with zero records is a valid result; without an observed or approved load ID, `LOAD_GET` is recorded as `precondition-not-met` and is not faked. Evidence is written separately to uniquely named, create-only files under `reports/tms/phase-2b/` and contains only sanitized metadata such as operation, byte counts, record counts, field names, terminal and lifecycle. It excludes host, port, token, IDs, filter values, raw wire, PII, `NOTES` and `MAX_BUY`.
-
-## Controlled booking workflow (Phase 2C)
-
-The local Phase 2C workflow verifies the safe sequence `LOAD_QUERY` → explicit load selection → `LOAD_GET` → externally validated negotiation/carrier handoffs → one-shot `LOAD_BOOK`. It binds the exact selected load to the query/session, consumes the booking attempt before writing, never retries, and allows at most one reconciliation `LOAD_GET` after genuine post-write transport uncertainty. The local tests use the mock only.
-
-The real booking runner is intentionally isolated and must not be run as part of `npm test`, CI, or an HTTP request. It remains blocked until a separate immediate approval accepts the candidate non-production target, the typed runtime handoffs, the single-attempt budget and `rollbackAvailable=false`:
-
-```powershell
-npm run test:real-tms:booking
-```
-
-Do not execute that command without the required final approval. Real runtime inputs are server-only environment values; never put load IDs, MC numbers, rates, booking references or handoff payloads in source, reports or shared output. The authoritative implementation details and safety gates are in `specs/implementation/phase-2c-real-controlled-booking.spec.md`.
-
-## Technical decisions
-
-- Route handlers explicitly use the Node.js runtime because TCP uses `node:net`.
-- TCP is treated as a byte stream; chunks are not assumed to equal lines or responses.
-- Each operation opens one socket, sends one request and closes it.
-- Authentication tokens and complete wire payloads are never logged or returned.
-- The transport has a small seam so a future `node:tls` transport can be added without changing protocol parsing, but TLS is not implemented yet.
-- Parser diagnostics are bounded and redact sensitive fields such as `AUTH`, `TOKEN`, `MAX_BUY` and `NOTES`; HTTP errors expose stable public messages only.
-- Singular operations validate their upstream response shape: echo, detail and booking require exactly one valid record. Malformed upstream records are reported as HTTP `502`, not as caller validation errors.
-- A response is complete only after `END\r\n` and the peer's TCP close; this lets the client reject bytes that arrive after the terminal frame.
-
-## Fault injection
-
-The mock accepts deterministic scenarios through `createMockLtmsServer` options or environment variables used by `npm run mock:tms`:
-
-| Scenario | Behavior |
-| --- | --- |
-| `none` | Normal response (default) |
-| `no-response` | Keeps the connection open until the client response timeout |
-| `partial-without-end` | Sends a record and closes without `END` |
-| `malformed` | Sends an invalid response record |
-| `invalid-framing` | Sends isolated LF framing |
-| `delayed-end` | Sends records and delays `END` (`TMS_MOCK_DELAY_MS`) |
-| `fragmented` | Sends the response in small chunks (`TMS_MOCK_FRAGMENT_SIZE`) |
-| `server-error` | Sends `ERR|CODE:SERVER_ERROR` |
-| custom remote code | Set `TMS_MOCK_SCENARIO=AUTH_FAILED`, for example |
-
-Example in PowerShell:
-
-```powershell
-$env:TMS_MOCK_SCENARIO = 'fragmented'
-$env:TMS_MOCK_FRAGMENT_SIZE = '1'
-npm run mock:tms
-```
-
-Stop the mock with `Ctrl+C` and restart it to reset its isolated booking state.
-
-## Current limitations
-
-The local mock supports `DEBUG_ECHO`, read-only `LOAD_QUERY`/`LOAD_GET`, stateful `LOAD_BOOK`, remote error codes and deterministic fault scenarios. Phase 2A validates real `DEBUG_ECHO`; Phase 2B validates real read-only loads through a separate runner; Phase 2C is implemented and verified locally but real booking remains gated. The Operations fallback is temporary, process-local, in-memory and non-persistent; restart loses records and Railway multi-instance processes can diverge. It is not native Twin or a durable operational replacement. TLS, negotiation engine, FMCSA integration, HappyRobot, persistence and deployment remain out of scope.
+No code changes were made for this documentation update.
