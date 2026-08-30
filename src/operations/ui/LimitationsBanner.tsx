@@ -1,0 +1,2 @@
+import styles from "./operations.module.css";
+export function LimitationsBanner() { return <section aria-label="Limitations" className={styles.banners}><p><b>Twin quota fallback</b><br />Local projection is active; this is not native Twin.</p><p><b>OTP delivery unavailable</b><br />Recorded status only; no bypass is available.</p><p><b>Real LOAD_BOOK disabled</b><br />The dashboard cannot enable real booking.</p></section>; }

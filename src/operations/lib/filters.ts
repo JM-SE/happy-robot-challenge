@@ -1,0 +1,1 @@
+export function serializeFilters(values: Record<string, string>): string { const params = new URLSearchParams(); for (const key of ["outcome", "fmcsaStatus", "otpStatus", "bookingStatus", "mode", "from", "to"]) if (values[key]) params.set(key, values[key]); return params.toString(); }

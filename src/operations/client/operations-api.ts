@@ -1,0 +1,4 @@
+import type { DashboardData, Row, Summary } from "../model/types";
+async function get<T>(path: string): Promise<T> { const response = await fetch(path, { credentials: "same-origin", cache: "no-store" }); const body = await response.json() as { ok?: boolean; data?: T }; if (!response.ok || !body.ok || !body.data) throw new Error("OPERATIONS_UNAVAILABLE"); return body.data; }
+export async function loadDashboard(query = ""): Promise<DashboardData> { const [calls, summary] = await Promise.all([get<{ calls: Row[] }>(`/api/operations/calls${query ? `?${query}` : ""}`), get<{ summary: Summary }>("/api/operations/summary")]); return { calls: calls.calls, summary: summary.summary, health: [] }; }
+export function loadCall(id: string) { return get<{ call: Row & { matchedLoads: unknown[]; timeline: unknown[]; notes?: string; handoffReason?: string } }>(`/api/operations/calls/${encodeURIComponent(id)}`); }
