@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "next start --hostname 0.0.0.0",
     "lint": "eslint .",
     "test": "vitest run",
     "test:real-tms:echo": "vitest run --config vitest.real.config.ts",
